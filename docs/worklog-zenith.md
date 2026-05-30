@@ -140,6 +140,17 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 4 — Dual-side Strict, Portfolio Summary, evolveThresholds++ 
+
+- [x] Dual-side conditions diperketat: butuh SEMUA — full BULLISH + risk>=70 + vol<=2.0 + organic>=75. Default SINGLE-SIDE
+- [x] `/paper` tampilin portfolio summary: total SOL deployed, value USD, PnL %, fees, SOL price
+- [x] `evolveThresholds()` extend ke management params: outOfRangeWaitMinutes, stopLossPct, takeProfitPct
+- [x] Insider filter dari OKX `dev_holding_pct` + `suspicious_pct` → `maxInsiderPct` config
+- [x] `dev_holding_pct` di-attach ke candidate di screening.js (sebelumnya di-fetch tapi ga dipake)
+- [x] 3 config files baru: user-config-evilpanda.json, user-config-hybrid.json (applied), user-config-backup.json
+- [x] Time filter: [0-15] UTC = 07:00-22:00 WIB (Asia + EU + early US). Dead hours skip screening
+- [x] Risk score null guard di executor — kandidat tanpa risk score di-block
+
 ### Session 3 — New Features (Auto-blacklist, Whale Buttons, Time Filter)
 
 - [x] Auto-blacklist rugged tokens — PnL <= -30% post-close → auto addToBlacklist
@@ -180,3 +191,5 @@ Mode:       DRY RUN (paper trading)
 14. **Jangan buang limit/token user buat hal yang bisa dicegah.** Tiap fix bolak-balik = restart = burn waktu + limit user
 15. **Trace ALL enforcement points sebelum implement.** Grep dulu semua file yang enforce rule lama, list semua, baru ubah SEMUA sekaligus — bukan satu-satu
 16. **Instant commands (read-only) SELALU taruh SEBELUM busy check.** Ga ada alasan /paper harus nunggu screening selesai
+17. **Dual-side memecoin = bahaya.** Data paper trade: single-side 5W/1L, dual-side 0W/4L. Default SINGLE-SIDE untuk memecoin
+18. **Selalu update MD file setelah selesai session** — jangan biarin ketinggalan

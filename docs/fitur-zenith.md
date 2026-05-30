@@ -27,7 +27,11 @@
 | Auto-Blacklist Rugs | ✅ Active (PnL <= -30%) | Very High |
 | Whale Quick-Close | ✅ Telegram inline buttons | High |
 | Time-of-Day Filter | ✅ activeHoursUtc config | Medium |
-| Hybrid Deploy | ✅ AI auto single/dual-side | High |
+| Hybrid Deploy | ✅ Strict 4-condition dual-side | High |
+| Insider Filter | ✅ dev_holding + suspicious < maxInsiderPct | High |
+| evolveThresholds++ | ✅ Tune OOR wait, SL, TP otomatis | High |
+| Paper Portfolio View | ✅ SOL value, PnL%, fees di /paper | Medium |
+| Risk Score Null Guard | ✅ Block deploy kalau risk scoring gagal | High |
 
 ---
 
