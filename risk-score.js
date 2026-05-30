@@ -1,45 +1,38 @@
 /**
- * Risk Score Engine
+ * Risk Score Engine v2
  *
- * Combines all available signals into a single 0-100 score that represents
- * the overall safety/quality of a pool. Lower score = riskier.
+ * Combines all available signals into a single 0-100 score.
+ * Calibrated against real Meteora market data (2026-05-30).
  *
- * Score breakdown (weighted):
- *   - Bundle/holder concentration (20pts) — lower = safer
- *   - Smart money presence       (15pts) — KOL/smart wallets boost
- *   - Volume & fee momentum      (15pts) — rising trends = healthy
- *   - Organic score              (10pts) — Jupiter quality signal
- *   - Token age                  (10pts) — sweet spot 2-72h
- *   - ATH distance               (10pts) — too close to ATH = risky entry
- *   - Liquidity health           (10pts) — TVL & holder count
- *   - Narrative quality          (5pts)  — does the token have a story
- *   - Risk flags                 (-30pts) — rugpull/wash/sniper penalties
+ * v2 changes:
+ *   - No-data fields default to neutral (not worst-case)
+ *   - Smart money absence is neutral, not negative
+ *   - Tiers recalibrated: DECENT starts at 50, not 60
+ *   - Size multiplier minimum is 0.75x (was 0.5x — caused deploy blocks)
  *
- * Conviction tiers (for dynamic position sizing):
- *   90-100  LEGENDARY  — max size
- *   75-89   STRONG     — 100% normal size
- *   60-74   DECENT     — 75% size
- *   45-59   MARGINAL   — 50% size
- *   <45     SKIP
+ * Conviction tiers:
+ *   85+   LEGENDARY  — 1.5x size
+ *   70+   STRONG     — 1.0x size
+ *   50+   DECENT     — 1.0x size (was 0.75x — too aggressive)
+ *   35+   MARGINAL   — 0.75x size (was 0.5x — caused floor violations)
+ *   <35   SKIP
  */
 
 import { log } from "./logger.js";
 
 const CONVICTION_TIERS = {
-  LEGENDARY: { min: 90, sizeMultiplier: 1.5, label: "🔥 LEGENDARY" },
-  STRONG:    { min: 75, sizeMultiplier: 1.0, label: "✅ STRONG"    },
-  DECENT:    { min: 60, sizeMultiplier: 0.75, label: "⚠️ DECENT"   },
-  MARGINAL:  { min: 45, sizeMultiplier: 0.5, label: "⚠️ MARGINAL" },
+  LEGENDARY: { min: 85, sizeMultiplier: 1.5, label: "🔥 LEGENDARY" },
+  STRONG:    { min: 70, sizeMultiplier: 1.0, label: "✅ STRONG"    },
+  DECENT:    { min: 50, sizeMultiplier: 1.0, label: "👍 DECENT"    },
+  MARGINAL:  { min: 35, sizeMultiplier: 0.75, label: "⚠️ MARGINAL" },
   SKIP:      { min: 0,  sizeMultiplier: 0,   label: "❌ SKIP"      },
 };
 
 /**
  * Calculate risk score for a pool candidate.
- * Input is the enriched candidate object from screening cycle.
  */
 export function calculateRiskScore(candidate = {}) {
   const breakdown = {};
-  let score = 50; // start neutral
 
   const pool = candidate.pool || candidate;
   const sw = candidate.sw || {};
@@ -47,107 +40,144 @@ export function calculateRiskScore(candidate = {}) {
   const ti = candidate.ti || candidate.tokenInfo || {};
   const audit = ti.audit || {};
 
-  // ─── 1. Bundle/Concentration (20pts) ─────────────
-  const bundlePct = Number(pool.bundle_pct ?? 0);
-  const top10Pct = Number(audit.top_holders_pct ?? 100);
-  const sniperPct = Number(pool.sniper_pct ?? 0);
+  // ─── 1. Holder Quality (15pts) ───────────────────
+  // Only penalize if data SHOWS problems, not if data is absent
+  const bundlePct = pool.bundle_pct != null ? Number(pool.bundle_pct) : null;
+  const top10Pct = audit.top_holders_pct != null ? Number(audit.top_holders_pct) : null;
+  const sniperPct = pool.sniper_pct != null ? Number(pool.sniper_pct) : null;
 
-  let concentrationScore = 20;
-  if (bundlePct > 30) concentrationScore -= 10;
-  else if (bundlePct > 20) concentrationScore -= 5;
-  if (top10Pct > 60) concentrationScore -= 8;
-  else if (top10Pct > 50) concentrationScore -= 4;
-  if (sniperPct > 20) concentrationScore -= 5;
-  breakdown.concentration = Math.max(0, concentrationScore);
+  let holderScore = 10; // start with baseline
+  if (bundlePct != null) {
+    if (bundlePct > 30) holderScore -= 5;
+    else if (bundlePct <= 15) holderScore += 2;
+  }
+  if (top10Pct != null) {
+    if (top10Pct > 60) holderScore -= 5;
+    else if (top10Pct <= 30) holderScore += 3;
+    else if (top10Pct <= 50) holderScore += 1;
+  }
+  if (sniperPct != null && sniperPct > 25) holderScore -= 3;
+  breakdown.holder_quality = Math.max(0, Math.min(15, holderScore));
 
-  // ─── 2. Smart Money Presence (15pts) ─────────────
+  // ─── 2. Smart Money (10pts) ──────────────────────
+  // Absence = neutral (5pts), not 0
   const swCount = sw?.in_pool?.length ?? 0;
-  let smartScore = 0;
-  if (swCount >= 3) smartScore = 15;
-  else if (swCount === 2) smartScore = 12;
-  else if (swCount === 1) smartScore = 8;
-  if (pool.smart_money_buy) smartScore += 3;
-  if (pool.kol_in_clusters) smartScore += 2;
-  breakdown.smart_money = Math.min(15, smartScore);
+  let smartScore = 5; // neutral baseline
+  if (swCount >= 3) smartScore = 10;
+  else if (swCount === 2) smartScore = 9;
+  else if (swCount === 1) smartScore = 7;
+  if (pool.smart_money_buy) smartScore = Math.min(10, smartScore + 2);
+  if (pool.kol_in_clusters) smartScore = Math.min(10, smartScore + 1);
+  breakdown.smart_money = smartScore;
 
-  // ─── 3. Volume/Fee Momentum (15pts) ──────────────
+  // ─── 3. Fee/Volume Activity (20pts) ──────────────
+  // Most important — is the pool actually generating fees?
+  const feeTvl = Number(pool.fee_active_tvl_ratio ?? 0);
+  const volume = Number(pool.volume_window ?? pool.volume ?? 0);
   const volChange = Number(pool.volume_change_pct ?? 0);
   const feeChange = Number(pool.fee_change_pct ?? 0);
-  let momentumScore = 7;
-  if (volChange > 30) momentumScore += 4;
-  else if (volChange > 10) momentumScore += 2;
-  else if (volChange < -30) momentumScore -= 4;
-  if (feeChange > 30) momentumScore += 4;
-  else if (feeChange > 10) momentumScore += 2;
-  else if (feeChange < -30) momentumScore -= 4;
-  breakdown.momentum = Math.max(0, Math.min(15, momentumScore));
 
-  // ─── 4. Organic Score (10pts) ────────────────────
+  let activityScore = 0;
+  // Fee/TVL ratio (0-10pts)
+  if (feeTvl >= 1.0) activityScore += 10;
+  else if (feeTvl >= 0.5) activityScore += 8;
+  else if (feeTvl >= 0.2) activityScore += 6;
+  else if (feeTvl >= 0.1) activityScore += 4;
+  else if (feeTvl >= 0.05) activityScore += 2;
+
+  // Volume trend (0-5pts)
+  if (volChange > 30) activityScore += 5;
+  else if (volChange > 10) activityScore += 3;
+  else if (volChange > 0) activityScore += 1;
+  else if (volChange < -30) activityScore -= 2;
+
+  // Fee trend (0-5pts)
+  if (feeChange > 30) activityScore += 5;
+  else if (feeChange > 10) activityScore += 3;
+  else if (feeChange < -30) activityScore -= 2;
+
+  breakdown.activity = Math.max(0, Math.min(20, activityScore));
+
+  // ─── 4. Organic Score (15pts) ────────────────────
   const organic = Number(pool.organic_score ?? 0);
   let organicScore = 0;
-  if (organic >= 80) organicScore = 10;
-  else if (organic >= 70) organicScore = 8;
-  else if (organic >= 60) organicScore = 6;
-  else if (organic >= 50) organicScore = 4;
+  if (organic >= 85) organicScore = 15;
+  else if (organic >= 75) organicScore = 12;
+  else if (organic >= 65) organicScore = 10;
+  else if (organic >= 55) organicScore = 7;
+  else if (organic >= 45) organicScore = 4;
   breakdown.organic = organicScore;
 
-  // ─── 5. Token Age (10pts) ────────────────────────
-  const ageHours = Number(pool.token_age_hours ?? 0);
-  let ageScore = 0;
-  if (ageHours >= 6 && ageHours <= 72) ageScore = 10;
-  else if (ageHours >= 2 && ageHours < 6) ageScore = 7;
-  else if (ageHours > 72 && ageHours <= 168) ageScore = 6;
-  else if (ageHours > 168) ageScore = 4;
-  else ageScore = 2;
-  breakdown.age = ageScore;
-
-  // ─── 6. ATH Distance (10pts) ─────────────────────
-  const athPct = Number(pool.price_vs_ath_pct ?? 100);
-  let athScore = 5;
-  if (athPct <= 50) athScore = 10;
-  else if (athPct <= 70) athScore = 8;
-  else if (athPct <= 85) athScore = 5;
-  else athScore = 2;
-  breakdown.ath_distance = athScore;
-
-  // ─── 7. Liquidity Health (10pts) ─────────────────
+  // ─── 5. Pool Health (15pts) ──────────────────────
   const tvl = Number(pool.tvl ?? pool.active_tvl ?? 0);
   const holders = Number(pool.holders ?? ti.holders ?? 0);
-  let liquidityScore = 0;
-  if (tvl >= 50000) liquidityScore += 5;
-  else if (tvl >= 20000) liquidityScore += 3;
-  if (holders >= 1500) liquidityScore += 5;
-  else if (holders >= 800) liquidityScore += 3;
-  else if (holders >= 500) liquidityScore += 2;
-  breakdown.liquidity = liquidityScore;
+  const activePct = Number(pool.active_pct ?? 0);
 
-  // ─── 8. Narrative Quality (5pts) ─────────────────
-  let narrativeScore = 0;
+  let healthScore = 0;
+  // TVL (0-5pts)
+  if (tvl >= 100000) healthScore += 5;
+  else if (tvl >= 30000) healthScore += 4;
+  else if (tvl >= 10000) healthScore += 3;
+  else if (tvl >= 5000) healthScore += 1;
+
+  // Holders (0-5pts)
+  if (holders >= 5000) healthScore += 5;
+  else if (holders >= 2000) healthScore += 4;
+  else if (holders >= 1000) healthScore += 3;
+  else if (holders >= 500) healthScore += 2;
+  else if (holders >= 300) healthScore += 1;
+
+  // Active positions % (0-5pts)
+  if (activePct >= 70) healthScore += 5;
+  else if (activePct >= 50) healthScore += 3;
+  else if (activePct >= 30) healthScore += 1;
+
+  breakdown.pool_health = Math.min(15, healthScore);
+
+  // ─── 6. Token Age (5pts) ─────────────────────────
+  const ageHours = Number(pool.token_age_hours ?? 0);
+  let ageScore = 3; // default neutral
+  if (ageHours >= 24 && ageHours <= 168) ageScore = 5;
+  else if (ageHours >= 6) ageScore = 4;
+  else if (ageHours >= 2) ageScore = 3;
+  else if (ageHours > 0 && ageHours < 2) ageScore = 1;
+  breakdown.age = ageScore;
+
+  // ─── 7. Narrative (5pts) ─────────────────────────
   const narrativeText = narrative?.narrative || narrative;
-  if (typeof narrativeText === "string" && narrativeText.length > 50) {
-    narrativeScore = 5;
-  } else if (narrativeText) {
-    narrativeScore = 2;
-  }
+  let narrativeScore = 2; // no narrative = neutral
+  if (typeof narrativeText === "string" && narrativeText.length > 80) narrativeScore = 5;
+  else if (typeof narrativeText === "string" && narrativeText.length > 30) narrativeScore = 3;
   breakdown.narrative = narrativeScore;
+
+  // ─── 8. ATH Distance (5pts) ──────────────────────
+  const athPct = pool.price_vs_ath_pct != null ? Number(pool.price_vs_ath_pct) : null;
+  let athScore = 3; // no data = neutral
+  if (athPct != null) {
+    if (athPct <= 40) athScore = 5;
+    else if (athPct <= 60) athScore = 4;
+    else if (athPct <= 80) athScore = 3;
+    else athScore = 1;
+  }
+  breakdown.ath = athScore;
 
   // ─── 9. RISK PENALTIES ──────────────────────────
   let penalties = 0;
-  if (pool.is_rugpull) penalties -= 25;
-  if (pool.is_wash) penalties -= 30;
-  if (pool.is_pvp) penalties -= 15;
-  if (pool.dex_boost || pool.dex_screener_paid) penalties -= 5;
-  if (pool.new_wallet_pct > 40) penalties -= 10;
+  if (pool.is_rugpull) penalties -= 30;
+  if (pool.is_wash) penalties -= 35;
+  if (pool.is_pvp) penalties -= 10;
+  if (pool.dex_boost || pool.dex_screener_paid) penalties -= 3;
   breakdown.penalties = penalties;
 
   // ─── 10. BONUSES ────────────────────────────────
   let bonuses = 0;
-  if (pool.dev_sold_all) bonuses += 5; // dev has no tokens to dump
+  if (pool.dev_sold_all) bonuses += 5;
+  if (pool.discord_signal) bonuses += 3;
   breakdown.bonuses = bonuses;
 
   // ─── FINAL SCORE ────────────────────────────────
-  score = Object.values(breakdown).reduce((sum, val) => sum + val, 0);
-  score = Math.max(0, Math.min(100, score));
+  const rawScore = Object.values(breakdown).reduce((sum, val) => sum + val, 0);
+  const score = Math.max(0, Math.min(100, rawScore));
 
   const tier = getConvictionTier(score);
 
@@ -157,38 +187,31 @@ export function calculateRiskScore(candidate = {}) {
     tier_name: getTierName(score),
     size_multiplier: tier.sizeMultiplier,
     breakdown,
-    should_deploy: score >= 45,
-    is_high_conviction: score >= 75,
+    should_deploy: score >= 35,
+    is_high_conviction: score >= 70,
   };
 }
 
 function getConvictionTier(score) {
-  if (score >= 90) return CONVICTION_TIERS.LEGENDARY;
-  if (score >= 75) return CONVICTION_TIERS.STRONG;
-  if (score >= 60) return CONVICTION_TIERS.DECENT;
-  if (score >= 45) return CONVICTION_TIERS.MARGINAL;
+  if (score >= 85) return CONVICTION_TIERS.LEGENDARY;
+  if (score >= 70) return CONVICTION_TIERS.STRONG;
+  if (score >= 50) return CONVICTION_TIERS.DECENT;
+  if (score >= 35) return CONVICTION_TIERS.MARGINAL;
   return CONVICTION_TIERS.SKIP;
 }
 
 function getTierName(score) {
-  if (score >= 90) return "LEGENDARY";
-  if (score >= 75) return "STRONG";
-  if (score >= 60) return "DECENT";
-  if (score >= 45) return "MARGINAL";
+  if (score >= 85) return "LEGENDARY";
+  if (score >= 70) return "STRONG";
+  if (score >= 50) return "DECENT";
+  if (score >= 35) return "MARGINAL";
   return "SKIP";
 }
 
-/**
- * Get position size multiplier based on conviction.
- * Multiply this with the base deploy amount.
- */
 export function getPositionSizeMultiplier(score) {
   return getConvictionTier(score).sizeMultiplier;
 }
 
-/**
- * Format risk score for logging/Telegram display.
- */
 export function formatRiskScore(scoreObj) {
   const lines = [
     `${scoreObj.tier} — Score: ${scoreObj.score}/100`,

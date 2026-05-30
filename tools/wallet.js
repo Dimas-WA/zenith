@@ -98,7 +98,7 @@ export async function getWalletBalances() {
       usd: b.usdValue ? Math.round(b.usdValue * 100) / 100 : null,
     }));
 
-    return {
+    const result = {
       wallet: walletAddress,
       sol: Math.round(solBalance * 1e6) / 1e6,
       sol_price: Math.round(solPrice * 100) / 100,
@@ -107,9 +107,19 @@ export async function getWalletBalances() {
       tokens: enrichedTokens,
       total_usd: Math.round((data.totalUsdValue || 0) * 100) / 100,
     };
+
+    // Dry run paper trading: simulate 5 SOL if wallet is empty
+    if (process.env.DRY_RUN === "true" && result.sol < 0.5) {
+      result.sol = 5.0;
+      result.sol_usd = Math.round(result.sol_price * 5 * 100) / 100;
+      result.total_usd = result.sol_usd;
+      result._simulated = true;
+    }
+
+    return result;
   } catch (error) {
     log("wallet_error", error.message);
-    return {
+    const fallback = {
       wallet: walletAddress,
       sol: 0,
       sol_price: 0,
@@ -119,6 +129,16 @@ export async function getWalletBalances() {
       total_usd: 0,
       error: error.message,
     };
+
+    if (process.env.DRY_RUN === "true") {
+      fallback.sol = 5.0;
+      fallback.sol_price = 82;
+      fallback.sol_usd = 410;
+      fallback.total_usd = 410;
+      fallback._simulated = true;
+    }
+
+    return fallback;
   }
 }
 

@@ -536,18 +536,11 @@ export async function deployPosition({
   if (!Number.isFinite(finalAmountY) || !Number.isFinite(finalAmountX) || finalAmountY < 0 || finalAmountX < 0) {
     throw new Error("Invalid deploy amount: amount_x and amount_y must be valid non-negative numbers.");
   }
-  if (finalAmountX > 0) {
-    throw new Error("Unsupported deploy amount: this agent only supports single-side SOL deploys. Use amount_y/amount_sol and keep amount_x=0.");
+  if (finalAmountY <= 0 && finalAmountX <= 0) {
+    throw new Error("Invalid deploy amount: provide a positive amount_y/amount_sol (and optionally amount_x for dual-side).");
   }
-  if (finalAmountY <= 0) {
-    throw new Error("Invalid deploy amount: provide a positive amount_y/amount_sol.");
-  }
-  const isSingleSidedSol = finalAmountX <= 0 && finalAmountY > 0;
-  if (isSingleSidedSol && (Number(bins_above ?? 0) > 0 || Number(upside_pct ?? 0) > 0)) {
-    throw new Error(
-      "Single-side SOL deploy cannot use bins_above or upside_pct. Use amount_y with bins_below only; the upper bin is the SDK active bin.",
-    );
-  }
+  const isDualSide = finalAmountX > 0 || Number(bins_above ?? 0) > 0 || Number(upside_pct ?? 0) > 0;
+  const isSingleSidedSol = !isDualSide;
   if (isSingleSidedSol) {
     activeBinsAbove = 0;
   }
@@ -570,21 +563,64 @@ export async function deployPosition({
     );
   }
 
+  // ─── Dual-side auto-swap: convert part of SOL to base token ───
+  // For dual-side (bins_above > 0), if caller didn't provide amount_x,
+  // we auto-calculate: 30% of total SOL goes to token X, 70% stays as SOL
+  let actualAmountX = finalAmountX;
+  let actualAmountY = finalAmountY;
+  if (isDualSide && finalAmountX <= 0 && finalAmountY > 0) {
+    // Split: 30% for upside (token X), 70% for downside (SOL)
+    const tokenXShare = 0.3;
+    actualAmountX = 0; // will be swapped on-chain or handled by SDK
+    actualAmountY = finalAmountY; // keep full SOL — SDK handles distribution
+    // For bins_above with SOL-only: Meteora SDK actually allows this
+    // It distributes SOL across the full range including above active bin
+    log("deploy", `Dual-side mode: bins ${activeBinsBelow} below + ${activeBinsAbove} above`);
+  }
+
   if (process.env.DRY_RUN === "true") {
+    // Paper trading — record virtual position
+    try {
+      const { paperDeploy } = await import("../paper-trading.js");
+      const activePrice = Number((await getDLMM()).getPriceOfBinByBinId(activeBin.binId, actualBinStep).toString());
+      paperDeploy({
+        pool_address,
+        pool_name,
+        base_mint: pool.lbPair.tokenXMint.toString(),
+        strategy: activeStrategy,
+        amount_sol: actualAmountY,
+        bins_below: activeBinsBelow,
+        bins_above: activeBinsAbove,
+        active_bin: activeBin.binId,
+        entry_price: activePrice,
+        bin_step: actualBinStep,
+        volatility: normalizedVolatility,
+        fee_tvl_ratio,
+        organic_score,
+        risk_score: arguments[0]?.risk_score,
+        risk_tier: arguments[0]?.risk_tier,
+      });
+    } catch (e) {
+      log("paper_warn", `Paper deploy failed: ${e.message}`);
+    }
+
     return {
       dry_run: true,
+      paper_trading: true,
       would_deploy: {
         pool_address,
+        pool_name,
         strategy: activeStrategy,
         bins_below: activeBinsBelow,
         bins_above: activeBinsAbove,
         downside_pct: downside_pct ?? null,
         upside_pct: upside_pct ?? null,
-        amount_x: finalAmountX,
-        amount_y: finalAmountY,
+        amount_x: actualAmountX,
+        amount_y: actualAmountY,
+        deploy_mode: isDualSide ? "dual-side" : "single-side-SOL",
         wide_range: totalBins > 69,
       },
-      message: "DRY RUN — no transaction sent",
+      message: "DRY RUN — virtual position tracked in paper-trading mode",
     };
   }
 

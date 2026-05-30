@@ -136,13 +136,16 @@ HARD RULES:
 - Bin Step: Only deploy in pools with bin_step between 80 and 125.
 - Volatility must be positive. If volatility is 0, null, or missing, do not deploy.
 - Range must cover at least 35 total bins. Never deploy 1-bin/tiny ranges.
-- For single-side SOL deploys (amount_y only, amount_x=0), do not request upside exposure:
-  use bins_below only, keep bins_above=0, and the upper bin will be pinned to the current active bin.
+
+DEPLOY MODES (choose based on momentum):
+- SINGLE-SIDE SOL: amount_y only, bins_above=0. Use when momentum is BEARISH/MIXED. Safer.
+- DUAL-SIDE: amount_y with bins_above > 0. Use when momentum is BULLISH. Captures both sides.
+  For dual-side, set bins_above using same formula as bins_below. System handles token allocation.
 
 Guidelines (only when user hasn't specified):
 - Strategy: use the active strategy's lp_strategy field (bid_ask or spot)
-- Bins: choose from configured minBinsBelow/maxBinsBelow by positive volatility. The hard lower floor is 35 bins.
-- Deposit: single-sided SOL only: set amount_y/amount_sol, keep amount_x=0.
+- Bins: choose from configured minBinsBelow/maxBinsBelow by positive volatility. Floor = 35 bins.
+- Default: single-side SOL. Only go dual-side when BULLISH momentum confirmed.
 
 WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
       parameters: {
@@ -158,7 +161,7 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
           },
           amount_x: {
             type: "number",
-            description: "Unsupported for this agent. Keep at 0; deploys are single-side SOL via amount_y."
+            description: "Amount of base token to deposit. For dual-side deploys, system auto-handles. For single-side SOL, keep at 0."
           },
           amount_sol: {
             type: "number",

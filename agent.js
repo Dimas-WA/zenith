@@ -93,11 +93,17 @@ import { getDecisionSummary } from "./decision-log.js";
 import { getClientForRole } from "./providers.js";
 
 // Legacy fallback client — used only when getClientForRole returns no match
-const _legacyClient = new OpenAI({
-  baseURL: process.env.LLM_BASE_URL || "https://openrouter.ai/api/v1",
-  apiKey: process.env.LLM_API_KEY || process.env.OPENROUTER_API_KEY,
-  timeout: 5 * 60 * 1000,
-});
+let _legacyClient = null;
+function getLegacyClient() {
+  if (!_legacyClient) {
+    _legacyClient = new OpenAI({
+      baseURL: process.env.LLM_BASE_URL || "https://openrouter.ai/api/v1",
+      apiKey: process.env.LLM_API_KEY || process.env.OPENROUTER_API_KEY || "missing",
+      timeout: 5 * 60 * 1000,
+    });
+  }
+  return _legacyClient;
+}
 
 const DEFAULT_MODEL = process.env.LLM_MODEL || "openrouter/healer-alpha";
 
@@ -105,8 +111,9 @@ function getClient(agentType) {
   try {
     const { client } = getClientForRole(agentType);
     return client;
-  } catch {
-    return _legacyClient;
+  } catch (e) {
+    log("provider_warn", `Provider init failed for ${agentType}: ${e.message} — using legacy client`);
+    return getLegacyClient();
   }
 }
 
@@ -166,7 +173,11 @@ function isThinkingModeToolChoiceError(error) {
 export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHistory = [], agentType = "GENERAL", model = null, maxOutputTokens = null, options = {}) {
   const { interactive = false, onToolStart = null, onToolFinish = null } = options;
   // Build dynamic system prompt with current portfolio state
-  const [portfolio, positions] = await Promise.all([getWalletBalances(), getMyPositions()]);
+  let [portfolio, positions] = await Promise.all([getWalletBalances(), getMyPositions()]);
+  // In dry run with empty wallet, simulate balance for paper trading
+  if (process.env.DRY_RUN === "true" && portfolio.sol < 0.5) {
+    portfolio = { ...portfolio, sol: 5.0, sol_usd: (portfolio.sol_price || 82) * 5 };
+  }
   const stateSummary = getStateSummary();
   const lessons = getLessonsForPrompt({ agentType });
   const perfSummary = getPerformanceSummary();

@@ -9,14 +9,21 @@
 
 | Kategori | Status | Impact |
 |----------|--------|--------|
-| Bug Fixes | ✅ 2 fixed | Critical |
+| Bug Fixes | ✅ 18 fixed | Critical |
 | Multi-Provider | ✅ 10 providers | High |
-| Optimal Tuning | ✅ 24 settings | High |
-| Risk Score Engine | ✅ Active | Very High |
+| Optimal Tuning | ✅ Data-driven (4h, real market) | High |
+| Risk Score Engine | ✅ v2 (bin-based, neutral defaults) | Very High |
 | Circuit Breaker | ✅ Active | Very High |
 | Honeypot Detection | ✅ Active | Very High |
 | Dynamic Sizing | ✅ Active | High |
 | Smart Auto-Claim | ✅ Active | Medium |
+| Whale Tracker | ✅ Active | High |
+| MEV Protection | ✅ Active | Medium |
+| Multi-Timeframe | ✅ Active (5m+30m+1h) | High |
+| Paper Trading | ✅ v2 (bin-based PnL) | High |
+| Telegram Integration | ✅ Full (all commands) | High |
+| Windows Support | ✅ cross-env | Medium |
+| Rename Meridian→Zenith | ✅ Complete | — |
 
 ---
 
@@ -499,6 +506,93 @@ node cli.js evolve
 - `analisa-tuning.md` — Tuning reasoning
 - `fitur-zenith.md` — This file
 - `learn_dlmm_nubie.md` — Learning notes
+
+---
+
+## 📝 14. PAPER TRADING SIMULATOR v2
+
+**File:** [paper-trading.js](../paper-trading.js) (NEW)
+
+### Cara Kerja
+- DRY_RUN mode: deploy bikin virtual position (bukan on-chain)
+- Tiap management cycle: fetch real active bin → update estimated PnL
+- PnL dihitung dari **bin movement** (bukan price ratio — avoid unit mismatch)
+- Auto-close: stop loss, take profit, OOR (dengan minimum 10 menit hold + 3 updates)
+- History persist di `paper-history.json`
+
+### PnL Calculation (v2)
+```
+binMoved = currentActiveBin - entryActiveBin
+binStepPct = bin_step / 10000
+IL = |binMoved| × binStepPct × 100 × 0.5 (kalau price drop)
+Fees = fee_tvl_ratio / 240 × minutes_in_range × deployed_value
+Total = Fees - IL
+```
+
+### Commands
+| Command | REPL | Telegram |
+|---------|------|----------|
+| `/paper` | ✅ | ✅ |
+| `/performance` | ✅ | ✅ |
+| `/paperreset` | ✅ | ✅ |
+
+### Simulated Balance
+Saat DRY_RUN + wallet kosong → simulate 5 SOL di:
+- System prompt (agent.js)
+- Tool result get_wallet_balance (wallet.js)
+- Screening cycle deploy amount (index.js)
+
+---
+
+## 📱 15. TELEGRAM INTEGRATION
+
+### Static /start Handler
+`/start` sekarang return static response (ga burn LLM token):
+```
+⚡ ZENITH — DRY RUN (Paper Trading)
+Wallet: 5 SOL ($411)
+Positions: 0 real | 2 paper
+Commands: /status /paper /performance ...
+```
+
+### Bot Menu Commands
+Semua commands registered di Telegram autocomplete via `setMyCommands`:
+```
+/help /status /wallet /positions /pool /close /closeall
+/set /config /settings /setcfg /screen /candidates
+/paper /performance /paperreset
+/deploy /briefing /hive /pause /resume /stop
+```
+
+---
+
+## 🔄 16. HYBRID DEPLOY MODE (Single-Side / Dual-Side Auto)
+
+**Files:** executor.js, dlmm.js, definitions.js, prompt.js, index.js, paper-trading.js
+
+### Konsep
+AI otomatis pilih deploy mode berdasarkan MTF momentum:
+
+| Momentum | Deploy Mode | Range | Risk |
+|----------|------------|-------|------|
+| BULLISH / LEANING_BULLISH | ↕️ Dual-side | bins_below + bins_above | Capture fee dua arah, tapi hold token |
+| MIXED / BEARISH / no data | ⬇️ Single-side SOL | bins_below only | Aman, ga hold token |
+
+### Cara Kerja
+1. Screening cycle → fetch MTF momentum per candidate
+2. AI lihat `mtf_momentum` field → decide mode
+3. BULLISH → `bins_above = bins_below` (same volatility formula), system handles token allocation
+4. MIXED/BEARISH → `bins_above = 0` (defensive, SOL only)
+
+### Kenapa Hybrid?
+- Single-side SOL: aman tapi OOR kalau pump → miss fee
+- Dual-side: capture fee dua arah tapi hold token → risk kalau dump
+- Hybrid: **best of both** — aggressive saat market confirm bullish, defensive saat uncertain
+
+### Paper Trading Support
+- `deploy_mode` tracked: "dual-side" atau "single-side-SOL"
+- IL calculation berbeda per mode
+- Display: ↕️ dual-side atau ⬇️ single di `/paper`
 
 ---
 

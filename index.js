@@ -37,6 +37,7 @@ import { appendDecision } from "./decision-log.js";
 import { checkAllPositionWhales, pruneSnapshots } from "./whale-tracker.js";
 import { checkMultiTimeframeMomentum, formatMtfResult } from "./multi-timeframe.js";
 import { assessMevRisk, getRecommendedPriorityFee } from "./mev-protection.js";
+import { paperUpdateAll, paperCheckExits, paperFormatStatus, paperFormatPerformance, paperGetPositions } from "./paper-trading.js";
 
 const entrypointPath = process.env.pm_exec_path || process.argv[1];
 const isMain = entrypointPath
@@ -216,9 +217,35 @@ export async function runManagementCycle({ silent = false } = {}) {
     const livePositions = await getMyPositions({ force: true }).catch(() => null);
     positions = livePositions?.positions || [];
 
+    // Paper trading — update virtual positions with real market data
+    if (process.env.DRY_RUN === "true") {
+      try {
+        const wallet = await getWalletBalances();
+        const solPrice = wallet.sol_price || 82;
+        await paperUpdateAll({
+          fetchActiveBin: (pool) => getActiveBin({ pool_address: pool }),
+          fetchPoolDetail: null,
+          solPrice,
+        });
+        const exits = paperCheckExits(config.management);
+        for (const exit of exits) {
+          log("paper", `Auto-closed: ${exit.pool_name} → ${exit.close_reason}`);
+          if (!silent && telegramEnabled()) {
+            sendMessage(`📝 Paper Close: ${exit.pool_name} | PnL: ${exit.estimated_total_pnl_pct}% ($${exit.estimated_total_pnl_usd.toFixed(2)}) | ${exit.close_reason}`).catch(() => {});
+          }
+        }
+        const paperPos = paperGetPositions();
+        if (paperPos.total_positions > 0) {
+          log("paper", `Virtual positions: ${paperPos.total_positions} | ` + paperPos.positions.map(p => `${p.pool}: ${p.total_pnl_pct}%`).join(", "));
+        }
+      } catch (e) {
+        log("paper_warn", `Paper update failed: ${e.message}`);
+      }
+    }
+
     if (positions.length === 0) {
       log("cron", "No open positions — triggering screening cycle");
-      mgmtReport = "No open positions. Triggering screening cycle.";
+      mgmtReport = null; // suppress Telegram — "no positions" spam is useless
       runScreeningCycle().catch((e) => log("cron_error", `Triggered screening failed: ${e.message}`));
       return mgmtReport;
     }
@@ -462,10 +489,13 @@ export async function runScreeningCycle({ silent = false } = {}) {
   timers.screeningLastRun = Date.now();
   log("cron", `Starting screening cycle [model: ${config.llm.screeningModel}]`);
   try {
-    // Reuse pre-fetched balance — no extra RPC call needed
-    const currentBalance = preBalance;
+    // Reuse pre-fetched balance — in dry run, simulate 5 SOL for paper trading
+    const isDryRun = process.env.DRY_RUN === "true";
+    const currentBalance = isDryRun && preBalance.sol < 0.5
+      ? { ...preBalance, sol: 5.0, sol_usd: preBalance.sol_price * 5 }
+      : preBalance;
     const baseDeployAmount = computeDeployAmount(currentBalance.sol);
-    log("cron", `Base deploy amount: ${baseDeployAmount} SOL (wallet: ${currentBalance.sol} SOL)`);
+    log("cron", `Base deploy amount: ${baseDeployAmount} SOL (wallet: ${isDryRun && preBalance.sol < 0.5 ? "SIMULATED 5.0" : currentBalance.sol} SOL)`);
 
     // Will be adjusted per-candidate based on risk score
     let deployAmount = baseDeployAmount;
@@ -669,22 +699,18 @@ PRE-LOADED CANDIDATES (${passing.length} pools):
 ${candidateBlocks.join("\n\n")}
 
 STEPS:
-1. Decide if any candidate is actually worth deploying. SKIP all candidates with risk_score < 45.
-2. Check mtf_momentum: SKIP candidates with mtf_momentum=REJECTED or mtf_momentum=BEARISH. Prefer BULLISH-confirmed candidates.
-3. Pick the best candidate (highest risk_score + BULLISH momentum + good narrative/smart wallets).
-3. DYNAMIC SIZING: multiply ${baseDeployAmount} SOL by the candidate's size_multiplier.
-   - LEGENDARY (90+): 1.5x = ${(baseDeployAmount * 1.5).toFixed(2)} SOL
-   - STRONG (75-89): 1.0x = ${baseDeployAmount} SOL
-   - DECENT (60-74): 0.75x = ${(baseDeployAmount * 0.75).toFixed(2)} SOL
-   - MARGINAL (45-59): 0.5x = ${(baseDeployAmount * 0.5).toFixed(2)} SOL
-   Cap final amount at maxDeployAmount (${config.risk.maxDeployAmount} SOL).
-   If mtf_momentum=MIXED, reduce size by extra 0.5x (cautious entry).
-4. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
+1. Decide if any candidate is actually worth deploying. SKIP candidates with risk_score < 35.
+2. Check mtf_momentum: SKIP candidates with mtf_momentum=REJECTED. Prefer BULLISH but MIXED is still deployable.
+3. Pick the best candidate (highest risk_score + best momentum + good narrative/smart wallets).
+4. DEPLOY AMOUNT: always use ${baseDeployAmount} SOL as amount_y. Cap at ${config.risk.maxDeployAmount} SOL.
+5. HYBRID MODE — choose based on candidate's mtf_momentum:
+   - BULLISH / LEANING_BULLISH → DUAL-SIDE: set bins_above = bins_below (same formula). Keep amount_x=0 (system handles).
+   - MIXED / BEARISH / no data → SINGLE-SIDE: bins_above=0, amount_x=0.
+6. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
    bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*(${config.strategy.maxBinsBelow - config.strategy.minBinsBelow})) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
-   pass deploy_position.volatility = the candidate volatility value AND deploy_position.risk_score = the candidate risk_score.
-   For single-side SOL deploys, do not invent upside:
-   set amount_y only, keep amount_x = 0, keep bins_above = 0, and let the upper bin stay at the active bin.
-4. Report in this exact format (no tables, no extra sections):
+   bins_above = same formula IF dual-side mode, else 0.
+   pass deploy_position.volatility AND deploy_position.risk_score.
+7. Report in this exact format (no tables, no extra sections):
    🚀 DEPLOYED
 
    <pool name>
@@ -1332,6 +1358,9 @@ function formatHelpText() {
     "/setcfg <key> <value> — update persisted config",
     "/screen — refresh deterministic candidate list",
     "/candidates — show latest cached candidates",
+    "/paper — show virtual paper trading positions",
+    "/performance — show paper trading history & win rate",
+    "/paperreset — clear all paper trading data",
     "/deploy <n> — deploy candidate by cached index",
     "/briefing — morning briefing",
     "/hive — HiveMind sync status",
@@ -1400,7 +1429,7 @@ async function deployLatestCandidate(index) {
     amount_y: deployAmount,
     strategy: config.strategy.strategy,
     bins_below: binsBelow,
-    bins_above: 0,
+    bins_above: 0, // Telegram quick-deploy uses single-side; auto screening uses hybrid
     pool_name: candidate.name,
     base_mint: candidate.base?.mint || candidate.base_mint || null,
     bin_step: candidate.bin_step,
@@ -1453,6 +1482,61 @@ async function telegramHandler(msg) {
     await showSettingsMenu().catch((e) => sendMessage(`Settings error: ${e.message}`).catch(() => {}));
     return;
   }
+
+  // ─── Instant commands — NO queue, bypass busy check ─────────
+  if (text === "/paper") {
+    await sendMessage(paperFormatStatus()).catch(() => {});
+    return;
+  }
+  if (text === "/performance") {
+    await sendMessage(paperFormatPerformance()).catch(() => {});
+    return;
+  }
+  if (text === "/paperreset") {
+    const { paperReset } = await import("./paper-trading.js");
+    paperReset();
+    await sendMessage("📝 Paper trading data cleared.").catch(() => {});
+    return;
+  }
+  if (text === "/start") {
+    try {
+      const [wallet, positions] = await Promise.all([getWalletBalances(), getMyPositions({ force: true })]);
+      const paperPos = paperGetPositions();
+      const mode = process.env.DRY_RUN === "true" ? "DRY RUN (Paper Trading)" : "LIVE";
+      const msg2 = [
+        `⚡ ZENITH — ${mode}`,
+        ``,
+        `Wallet: ${wallet.sol} SOL ($${wallet.sol_usd})`,
+        `Positions: ${positions.total_positions} real | ${paperPos.total_positions} paper`,
+        ``,
+        `Commands:`,
+        `/status — wallet + positions`,
+        `/positions — list positions`,
+        `/candidates — top pool candidates`,
+        `/paper — paper trading positions`,
+        `/performance — paper trading stats`,
+        `/paperreset — reset paper data`,
+        `/screen — refresh candidates`,
+        `/settings — config menu`,
+        `/config — show config`,
+        `/help — all commands`,
+      ].join("\n");
+      await sendMessage(msg2).catch(() => {});
+    } catch (e) {
+      await sendMessage(`Zenith ready. Error: ${e.message}`).catch(() => {});
+    }
+    return;
+  }
+  if (text === "/help") {
+    await sendMessage(formatHelpText()).catch(() => {});
+    return;
+  }
+  if (text === "/config") {
+    await sendMessage(formatConfigSnapshot()).catch(() => {});
+    return;
+  }
+  // ─── End instant commands ───────────────────────────────────
+
   if (_managementBusy || _screeningBusy || busy) {
     if (_telegramQueue.length < 5) {
       _telegramQueue.push(msg);
@@ -1473,11 +1557,6 @@ async function telegramHandler(msg) {
     return;
   }
 
-  if (text === "/help") {
-    await sendMessage(formatHelpText()).catch(() => {});
-    return;
-  }
-
   if (text === "/wallet" || text === "/status") {
     try {
       const [wallet, positions] = await Promise.all([getWalletBalances(), getMyPositions({ force: true })]);
@@ -1488,11 +1567,6 @@ async function telegramHandler(msg) {
     } catch (e) {
       await sendMessage(`Error: ${e.message}`).catch(() => {});
     }
-    return;
-  }
-
-  if (text === "/config") {
-    await sendMessage(formatConfigSnapshot()).catch(() => {});
     return;
   }
 
@@ -1623,6 +1697,8 @@ async function telegramHandler(msg) {
     await sendMessage(describeLatestCandidates(5)).catch(() => {});
     return;
   }
+
+  // /paper, /performance, /paperreset, /start, /help, /config — handled BEFORE busy check (instant)
 
   const deployMatch = text.match(/^\/deploy\s+(\d+)$/i);
   if (deployMatch) {
@@ -1856,6 +1932,8 @@ Commands:
   auto           Let the agent pick and deploy automatically
   /status        Refresh wallet + positions
   /candidates    Refresh top pool list
+  /paper         Show virtual positions (paper trading)
+  /performance   Show paper trading performance
   /briefing      Show morning briefing (last 24h)
   /learn         Study top LPers from the best current pool and save lessons
   /learn <addr>  Study top LPers from a specific pool address
@@ -1894,7 +1972,7 @@ Commands:
       await runBusy(async () => {
         console.log("\nAgent is picking and deploying...\n");
         const { content: reply } = await agentLoop(
-          `get_top_candidates and deploy only if a candidate is clearly worth it. If there is only one weak candidate, report NO DEPLOY. For a valid deploy, use amount_y=${DEPLOY}, amount_x=0, bins_above=0, and bins_below from positive volatility. Execute now, don't ask.`,
+          `get_top_candidates and deploy only if a candidate is clearly worth it. If there is only one weak candidate, report NO DEPLOY. For a valid deploy, use amount_y=${DEPLOY} and bins_below from positive volatility. Choose deploy mode: BULLISH momentum → dual-side (bins_above = bins_below), else single-side (bins_above=0). Execute now, don't ask.`,
           config.llm.maxSteps,
           [],
           "SCREENER"
@@ -1914,6 +1992,26 @@ Commands:
 
     // ── Slash commands ───────────────────────
     if (input === "/stop") { await shutdown("user command"); return; }
+
+    if (input === "/paper") {
+      console.log(`\n${paperFormatStatus()}\n`);
+      rl.prompt();
+      return;
+    }
+
+    if (input === "/performance") {
+      console.log(`\n${paperFormatPerformance()}\n`);
+      rl.prompt();
+      return;
+    }
+
+    if (input === "/paperreset") {
+      const { paperReset } = await import("./paper-trading.js");
+      paperReset();
+      console.log("\n📝 Paper trading data cleared.\n");
+      rl.prompt();
+      return;
+    }
 
     if (input === "/status") {
       await runBusy(async () => {

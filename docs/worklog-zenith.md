@@ -1,136 +1,173 @@
 # Work Log — Zenith Agent Customization
 
-> Tracking semua keputusan, temuan, error, dan improvement selama modifikasi Zenith.
+> Tracking semua keputusan, temuan, error, dan improvement.
+> Forked from Meridian (yunus-0x/meridian), renamed to Zenith.
 
 ---
 
-## Session 1 — 2026-05-30: Repo Analysis
+## Session 1 — 2026-05-30
 
-### Status: COMPLETED
+### Completed
 
-### Temuan Arsitektur
-
-**Flow Lengkap: Screening -> AI -> Deploy -> Manage -> Learn**
-
-```
-1. SCREENING (setiap 30 menit)
-   index.js:runScreeningCycle()
-   -> getTopCandidates() [tools/screening.js]
-      -> discoverPools() - fetch dari Meteora Pool Discovery API
-      -> filter: TVL, volume, mcap, holders, organic score, bin_step, volatility
-      -> enrichPvpRisk() - cek rival token dengan symbol sama
-      -> OKX enrichment: risk level, bundle%, sniper%, rugpull, wash trading
-      -> chart indicators (opsional)
-   -> untuk tiap candidate: fetch smart wallets, narrative, token info
-   -> hard filter: launchpad, bot holders
-   -> kirim ke LLM (SCREENER role) dengan semua data pre-loaded
-   -> LLM decide: deploy atau skip
-   -> deploy_position() [tools/dlmm.js] via executor.js safety checks
-
-2. MANAGEMENT (setiap 10 menit)
-   index.js:runManagementCycle()
-   -> getMyPositions() - ambil semua posisi terbuka
-   -> recordPositionSnapshot() - simpan ke pool-memory.json
-   -> getDeterministicCloseRule() - cek stop loss, take profit, OOR, low yield
-   -> updatePnlAndCheckExits() - trailing take profit
-   -> kalau ada action: kirim ke LLM (MANAGER role) untuk eksekusi
-   -> close_position() -> auto-swap base token ke SOL
-
-3. LEARNING
-   lessons.js:recordPerformance() - catat setelah close
-   lessons.js:evolveThresholds() - adjust screening thresholds
-   pool-memory.js - ingat history per pool
-   decision-log.js - log semua keputusan
-   signal-weights.js - Darwinian weighting (boost/decay sinyal berdasarkan performa)
-```
-
-**Provider System (LLM)**
-- Default: OpenRouter API (`https://openrouter.ai/api/v1`)
-- Bisa custom: `LLM_BASE_URL` + `LLM_API_KEY` (OpenAI-compatible)
-- Support: LM Studio, any OpenAI-compatible endpoint
-- Per-role model: `managementModel`, `screeningModel`, `generalModel`
-- Fallback model: `stepfun/step-3.5-flash:free` saat 502/503/529
-- System prompt support: ada fallback ke `user_embedded` mode kalau provider reject system role
-- Tool choice: handle `tool_choice=required` rejection dan thinking mode
-
-**Data Sources**
-- Meteora Pool Discovery API (pool screening)
-- @meteora-ag/dlmm SDK (on-chain: deploy, close, claim, positions)
-- Meteora DLMM PnL API (yield, fee accrual)
-- OKX OnchainOS (smart money, risk scoring, bundle/sniper detection)
-- Jupiter API (token audit, mcap, launchpad, price stats)
-- LPAgent API via Agent Zenith (top LPer study)
-- Discord listener (signal dari LP Army channels)
-
-### Known Issues dari CLAUDE.md
-1. `evolveThresholds()` di lessons.js referensi `maxVolatility` dan `minFeeTvlRatio` (key salah) -> evolution jadi no-op
-2. `get_wallet_positions` tool ada di definitions.js tapi ga di MANAGER_TOOLS atau SCREENER_TOOLS
-
-### Yang Sudah Dimodifikasi
-- [x] Fix evolveThresholds() bug (wrong key names) — `minFeeTvlRatio` → `minFeeActiveTvlRatio`, `maxVolatility` → `maxBinsBelow`
-- [x] Custom provider support — 10 providers: openrouter, deepseek, xiaomimo, aimurah, anthropic, google, groq, together, xai, local
-- [x] Per-role provider config — beda provider buat screener, manager, general
-- [x] Perkuat screening logic — volume/fee trend bonus, smart money boost, PVP/rugpull penalty
-- [x] Fix known issue #2 — `get_wallet_positions` added to MANAGER_TOOLS
-- [x] Tambah `list_providers` tool buat agent
-- [x] Updated .env.example dengan semua provider config
-- [x] Bikin user-config.json dengan Combo B (deepseek screening + xiaomimo management)
-- [x] Bikin .env template siap isi
-- [x] Bikin panduan-zenith.md — setup, cara pakai, switch provider, aturan biar ga kecombo
-- [x] Optimal tuning — stop loss -50→-20, OOR 30→15min, screening 30→20min, management 10→5min
-- [x] Anti-rug filters — maxBundle 30→25, maxTop10 60→50, minTokenAge 2h, athFilter -15
-- [x] Anti-revenge-deploy — 2 fails dalam 24h auto cooldown
-- [x] Bikin analisa-tuning.md — detail reasoning tiap perubahan + expected impact
-- [x] **Risk Score Engine** (risk-score.js) — 0-100 score combining bundle/smart money/momentum/age/ATH
-- [x] **Circuit Breaker** (circuit-breaker.js) — auto-pause deploy on 3+ losses/drawdown 15%+
-- [x] **Honeypot Pre-Check** (honeypot-check.js) — verify mint/freeze auth + concentration before deploy
-- [x] **Dynamic Position Sizing** — multiplier based on risk score tier (0.5x-1.5x)
-- [x] **Smart Auto-Claim** — claim at max(min$3, 2% of deployed) instead of flat $5
-- [x] Hooked all into screening + deploy safety + post-close eval
-- [x] New tools: get_circuit_status, reset_circuit, trip_circuit, check_honeypot
-- [x] **Whale Movement Tracker** (whale-tracker.js) — snapshot top holders, detect dumps/exits/new whales
-- [x] **MEV Protection** (mev-protection.js) — dynamic priority fee, MEV hour detection, slippage optimization
-- [x] **Multi-Timeframe Momentum** (multi-timeframe.js) — 5m+30m+1h confirmation, auto-reject bearish
-- [x] Whale alerts injected into management report (whale icon per position)
-- [x] MTF momentum injected into screening candidates (per-pool)
-- [x] LLM instructed to SKIP bearish MTF, half-size MIXED MTF
-- [x] New tools: check_whale_movements, get_mev_status, check_momentum
-- [x] Updated fitur-zenith.md dengan semua fitur baru
-- [x] Bikin breakdown-proses-agent.md — full lifecycle step-by-step + timing + safety layers
+- [x] Analisis full repo Meridian (arsitektur, flow, semua file)
+- [x] Fix evolveThresholds() bug — `minFeeTvlRatio` → `minFeeActiveTvlRatio`, `maxVolatility` → `maxBinsBelow`
+- [x] Fix `get_wallet_positions` missing dari MANAGER_TOOLS
+- [x] Multi-provider system (10 providers: deepseek, xiaomimo, aimurah, anthropic, google, groq, together, xai, openrouter, local)
+- [x] Per-role provider config (beda AI per role: screener/manager/general)
+- [x] Enhanced screening score (volume/fee trend bonus, smart money boost, PVP/rugpull penalty)
+- [x] Risk Score Engine v2 (risk-score.js) — 0-100 score, bin-based, no-data = neutral
+- [x] Circuit Breaker (circuit-breaker.js) — auto-pause deploy on consecutive losses/drawdown
+- [x] Honeypot Pre-Check (honeypot-check.js) — verify mint/freeze auth before deploy
+- [x] Dynamic Position Sizing — multiplier by risk tier (MARGINAL 0.75x, DECENT 1.0x, STRONG 1.0x, LEGENDARY 1.5x)
+- [x] Smart Auto-Claim — claim at max($3, 2% of deployed value)
+- [x] Whale Movement Tracker (whale-tracker.js) — detect top holder dumps/exits
+- [x] MEV Protection (mev-protection.js) — dynamic priority fee, MEV hour detection
+- [x] Multi-Timeframe Momentum (multi-timeframe.js) — 5m+30m+1h confirmation
+- [x] Paper Trading Simulator v2 (paper-trading.js) — bin-based PnL, min hold before exit
+- [x] Windows cross-env support
+- [x] DRY_RUN simulated balance (5 SOL) — system prompt + tool result + screening cycle
+- [x] Optimal tuning from real market data (timeframe 4h, fee_tvl 0.10, etc.)
+- [x] Rename Meridian → Zenith (package.json, CLI, README, CLAUDE.md, startup banner)
+- [x] Move docs to zenith/docs/
+- [x] Telegram commands: /paper, /performance, /paperreset, /start (static)
+- [x] Telegram bot menu registration (autocomplete)
+- [x] Provider error handling (graceful fallback, clear error messages)
 
 ---
 
 ## Decisions Log
 
-| # | Keputusan | Alasan | Status |
-|---|-----------|--------|--------|
-| 1 | Analisis full repo dulu sebelum modif | Biar paham flow end-to-end, ga asal ubah | DONE |
-| 2 | Fix evolve bug: `maxVolatility` → `maxBinsBelow` | maxVolatility ga ada di config, tapi maxBinsBelow punya data volatility | DONE |
-| 3 | Provider pakai OpenAI SDK compat, bukan native per-provider | Semua major provider sekarang support OpenAI-compatible endpoint | DONE |
-| 4 | Per-role provider lewat config.llm, bukan global | Biar bisa screener pake Claude, manager pake Groq, dll | DONE |
-| 5 | Enhanced scoring: volume trend + fee trend + smart money | Data-driven scoring >> flat weighting | DONE |
+| # | Keputusan | Alasan |
+|---|-----------|--------|
+| 1 | Analisis full repo sebelum modif | Pahami flow end-to-end |
+| 2 | Fix evolve bug: maxVolatility → maxBinsBelow | maxVolatility ga ada di config |
+| 3 | Provider pakai OpenAI SDK compat | Semua major provider support OpenAI-compatible |
+| 4 | Per-role provider lewat config.llm | Bisa screener=Claude, manager=Groq, dll |
+| 5 | Enhanced scoring: trend + smart money | Data-driven > flat weighting |
+| 6 | Timeframe 5m → 4h | Real data: 5m = 0 pools lolos, 4h = 39 pools |
+| 7 | Risk score v2: no-data = neutral | v1 default worst-case → semua pool MARGINAL |
+| 8 | Remove MIXED 0.5x penalty | Stack 0.5x × 0.5x = 0.125 SOL → di bawah floor |
+| 9 | Paper PnL bin-based bukan price-based | Price ratio unit mismatch → -93% dalam 1 menit |
+| 10 | /start Telegram = static response | Sebelum ke LLM → burn token unnecessarily |
+| 11 | Agent full auto dari awal | User udah sepakat, jangan tanya lagi |
+| 12 | Setiap command WAJIB register di REPL + Telegram | Ga boleh cuma 1 tempat |
+
+---
 
 ## Error Log
 
-| # | Error | Penyebab | Fix | Status |
-|---|-------|----------|-----|--------|
-| 1 | evolveThresholds() no-op | Key `minFeeTvlRatio` dan `maxVolatility` ga ada di config | Fixed → `minFeeActiveTvlRatio` dan `maxBinsBelow` | DONE |
-| 2 | `get_wallet_positions` ga available di MANAGER | Missing dari MANAGER_TOOLS set | Added ke set | DONE |
+| # | Error | Penyebab | Fix |
+|---|-------|----------|-----|
+| 1 | evolveThresholds() no-op | Key salah | Fixed keys |
+| 2 | get_wallet_positions missing | Not in MANAGER_TOOLS | Added |
+| 3 | npm run dev gagal Windows | Linux syntax `DRY_RUN=true` | cross-env |
+| 4 | 0 pools screened | 5m timeframe → fee_tvl = 0 | Ganti 4h |
+| 5 | Thresholds terlalu strict | minFeeActiveTvlRatio 0.08 | 0.10 (4h) |
+| 6 | Risk score 42-53 (harusnya higher) | No-data = worst-case | v2: neutral default |
+| 7 | Deploy amount 0.125 SOL < floor | 0.5x × 0.5x stack | Remove MIXED penalty, MARGINAL 0.75x |
+| 8 | LLM refuse deploy (wallet 0 SOL prompt) | System prompt shows real 0 | Simulate 5 SOL |
+| 9 | Executor block deploy dry run | Floor check ga skip | Floor 0.01 di dry run |
+| 10 | Tanya user padahal udah sepakat | Lupa context | Catet: jangan tanya lagi |
+| 11 | Paper -93.68% dalam 1 menit | Price ratio unit mismatch | v2: bin movement based |
+| 12 | Paper stop loss 1 menit | No min hold time | MIN_HOLD=10m, MIN_UPDATES=3 |
+| 13 | IL calculation nonsense | Raw price ratio | Bin step × bins moved |
+| 14 | Tool get_wallet_balance return 0 SOL | Simulate cuma di prompt | Simulate di tool juga |
+| 15 | Provider crash tanpa API key | OpenAI SDK throw | Key validation + lazy init |
+| 16 | Reactive bukan proactive | Tambal satu-satu | Audit full path dulu |
+| 17 | /paper ga ada di Telegram | Cuma REPL | Register kedua tempat |
+| 18 | /start burn LLM token | Free-form → AI | Static handler |
 
-## Catatan Penting
+---
 
-### Yang BENAR:
-- Arsitektur tool-based ReAct loop — clean, modular
-- Safety checks comprehensive (duplicate pool, balance check, bin range validation)
-- Darwinian signal weighting — auto-evolve berdasarkan performa
-- Pool memory dan lessons system — agent belajar dari pengalaman
-- Trailing take profit dengan peak confirmation
-- PVP detection (rival token dengan symbol sama)
-- OKX wash trading hard filter
+## Files
 
-### Yang PERLU HATI-HATI:
-- Private key exposed di .env — JANGAN PERNAH commit
-- evolveThresholds() broken (key mismatch) — harus fix sebelum rely on auto-evolution
-- Default model `healer-alpha` / `hunter-alpha` mungkin ga tersedia di semua provider
-- Free models bisa return empty responses (ada handling tapi bisa miss)
-- HiveMind ga bisa di-disable sepenuhnya (fallback ke default)
+### New (7 modules + 1 docs)
+| File | Purpose |
+|------|---------|
+| providers.js | Multi-provider LLM factory |
+| risk-score.js | Risk scoring engine v2 |
+| circuit-breaker.js | Auto-pause on losses |
+| honeypot-check.js | Pre-deploy verification |
+| whale-tracker.js | Top holder movement detection |
+| mev-protection.js | Priority fee optimization |
+| multi-timeframe.js | Cross-timeframe momentum |
+| paper-trading.js | Paper trading simulator v2 |
+
+### Modified (10 files)
+| File | Changes |
+|------|---------|
+| agent.js | Per-role client, simulated balance, tool sets |
+| config.js | Provider config keys |
+| lessons.js | Fixed evolveThresholds bug |
+| index.js | Paper trading hooks, whale alerts, MTF in screening, /start handler, Telegram commands |
+| tools/screening.js | Enhanced scoring + risk score |
+| tools/executor.js | Circuit/honeypot safety, provider tools |
+| tools/definitions.js | New tool schemas |
+| tools/wallet.js | Simulated balance in dry run |
+| tools/dlmm.js | Paper deploy hook |
+| telegram.js | Bot menu commands |
+
+### Config
+| File | Purpose |
+|------|---------|
+| user-config.json | Optimal settings (tuned from real data) |
+| .env | Template with all provider keys |
+| .env.example | Documented template |
+| .gitignore | Paper trading + circuit breaker files |
+| package.json | Renamed zenith, cross-env, Windows compat |
+
+### Docs (6 files in docs/)
+| File | Content |
+|------|---------|
+| worklog-zenith.md | This file |
+| fitur-zenith.md | All features list |
+| panduan-zenith.md | Setup & usage guide |
+| analisa-tuning.md | Tuning reasoning |
+| breakdown-proses-agent.md | Full lifecycle step-by-step |
+| learn_dlmm_nubie.md | DLMM learning notes |
+
+---
+
+### Session 2 — Hybrid Deploy Mode
+
+- [x] Hybrid single-side/dual-side deploy — AI decides based on MTF momentum
+- [x] executor.js — removed hard-block on amount_x > 0, allow bins_above > 0
+- [x] dlmm.js — removed throw on dual-side, added auto-handling for token allocation
+- [x] definitions.js — updated deploy_position schema with DEPLOY MODES
+- [x] prompt.js — updated screener DEPLOY RULES: BULLISH→dual, MIXED→single
+- [x] index.js — updated screening prompt steps 4-7 for hybrid + auto command
+- [x] paper-trading.js — deploy_mode tracking, dual-side IL calculation, display mode icon
+- [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
+- [x] Removed duplicate Telegram handlers
+
+---
+
+## Current Config (Running)
+
+```
+Provider:   deepseek-v4-pro (screening) | off-v2-flash (management) | claude-haiku-4-5 (general)
+Timeframe:  4h trending
+Deploy:     0.3 SOL | max 3 positions
+Risk:       SL -20% | TP 8% | trailing 5%/2%
+Screening:  fee_tvl>=0.10 | organic>=50 | holders>=300 | mcap>=100k
+Mode:       DRY RUN (paper trading)
+```
+
+## Lessons Learned (for future dev)
+
+1. Selalu trace FULL code path sebelum claim "fixed" — jangan tambal satu-satu
+2. Setiap command baru WAJIB register di REPL + Telegram + help text + bot menu
+3. Test di Windows, bukan assume Linux
+4. Test dengan wallet kosong, bukan assume ada SOL
+5. No-data fields harus default NEUTRAL, bukan worst-case
+6. Timeframe harus di-validate dengan REAL market data, bukan teori
+7. LLM bisa call tools yang override system prompt — simulate harus di SEMUA layer
+8. Jangan tanya user hal yang udah disepakati
+9. Paper trading PnL harus pake integer-based metrics (bin ID), bukan float prices
+10. **JANGAN UBAH code yang udah jalan.** Kalau fitur udah work, JANGAN SENTUH. Improvement boleh, tapi JANGAN pas user lagi test — nanti bikin panik dan buang waktu
+11. **Kalau mau improve, TANYA dulu.** Jangan langsung ubah code yang udah production/running
+12. **Bedakan "fix bug" vs "improvement".** Bug = harus fix. Improvement = tanya user dulu, jangan asal ubah
+13. **Instant commands (read-only) taruh SEBELUM busy check.** /paper, /performance, /help, /config, /start — ini ga perlu nunggu LLM selesai. Harusnya dari awal gua tau ini
+14. **Jangan buang limit/token user buat hal yang bisa dicegah.** Tiap fix bolak-balik = restart = burn waktu + limit user
+15. **Trace ALL enforcement points sebelum implement.** Grep dulu semua file yang enforce rule lama, list semua, baru ubah SEMUA sekaligus — bukan satu-satu
+16. **Instant commands (read-only) SELALU taruh SEBELUM busy check.** Ga ada alasan /paper harus nunggu screening selesai

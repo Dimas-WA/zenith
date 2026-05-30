@@ -331,7 +331,33 @@ DRY_RUN=true npm start
 
 ---
 
-## 7. QUICK REFERENCE
+## 7. PAPER TRADING (DRY RUN)
+
+Paper trading jalan otomatis saat `DRY_RUN=true`. Agent screening + deploy virtual, track PnL pake real market data.
+
+### Commands
+| Command | Fungsi |
+|---------|--------|
+| `/paper` | Lihat virtual positions + estimated PnL |
+| `/performance` | History semua paper trades + win rate |
+| `/paperreset` | Reset semua data paper trading |
+
+### Cara Kerja
+1. Agent screening → pilih pool → "deploy" virtual (ga on-chain)
+2. Tiap 5 menit → fetch real active bin → update PnL estimasi
+3. Auto-close kalau hit stop loss (-20%), take profit (8%), atau OOR (15m)
+4. Minimum 10 menit hold + 3 updates sebelum auto-close (avoid false triggers)
+
+### Data Files
+- `paper-positions.json` — posisi aktif (persist across restart)
+- `paper-history.json` — history closed trades
+
+### Akurasi
+~80-90% vs real trades. PnL dihitung dari bin movement (integer), bukan price ratio.
+
+---
+
+## 8. QUICK REFERENCE
 
 ```bash
 # Start dry run

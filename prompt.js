@@ -131,7 +131,9 @@ POOL MEMORY: Past losses or problems → strong skip signal.
 DEPLOY RULES:
 - COMPOUNDING: Use the deploy amount from the goal EXACTLY. Do NOT default to a smaller number.
 - bins_below = round(config.strategy.minBinsBelow + (candidate volatility/5)*(config.strategy.maxBinsBelow-config.strategy.minBinsBelow)) clamped to [minBinsBelow,maxBinsBelow]. Volatility must be a positive number; 0/unknown means skip.
-- Use amount_y only, keep amount_x=0 and bins_above=0.
+- HYBRID MODE: Choose deploy mode based on candidate mtf_momentum:
+  - BULLISH / LEANING_BULLISH → DUAL-SIDE: set bins_above = bins_below (same formula). Captures upside fees.
+  - MIXED / LEANING_BEARISH / no data → SINGLE-SIDE SOL: bins_above=0, amount_x=0. Defensive.
 - Bin steps must be [80-125].
 - Pick ONE pool only when conviction is real. If only one weak candidate survives, skip and explain why none qualify.
 

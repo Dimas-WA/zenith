@@ -109,6 +109,11 @@ const PROVIDER_PRESETS = {
     baseURL: "https://api.anthropic.com/v1/",
     envKey: "ANTHROPIC_API_KEY",
     defaultModel: "claude-sonnet-4-6",
+    // Anthropic requires extra headers for OpenAI-compat mode
+    defaultHeaders: {
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "messages-2023-12-15",
+    },
     models: {
       "sonnet": "claude-sonnet-4-6",
       "opus":   "claude-opus-4-7",
@@ -230,10 +235,19 @@ export function getClientForRole(role, userConfig = null) {
     return { client: _clients.get(cacheKey), provider: providerName || "default", baseURL };
   }
 
+  if (!apiKey) {
+    log("provider_error", `No API key found for ${role} (provider: ${providerName || "default"}). Check .env or user-config.json.`);
+    throw new Error(`No API key for ${providerName || "default"} provider (role: ${role}). Set the API key in .env.`);
+  }
+
+  // Some providers (e.g. Anthropic) need extra headers
+  const defaultHeaders = provider?.defaultHeaders || {};
+
   const client = new OpenAI({
     baseURL,
     apiKey,
     timeout: 5 * 60 * 1000,
+    defaultHeaders,
   });
 
   _clients.set(cacheKey, client);
