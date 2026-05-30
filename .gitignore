@@ -40,9 +40,13 @@ discord-signals.json
 # Custom power-up state files
 whale-snapshots.json
 circuit-breaker.json
+paper-positions.json
+paper-history.json
 
 # Playwright MCP browser logs
 .playwright-mcp/
 
 # Claude Code runtime lock
 .claude/scheduled_tasks.lock
+.claude/
+.vscode/
