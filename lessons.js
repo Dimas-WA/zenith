@@ -405,6 +405,73 @@ export function evolveThresholds(perfData, config) {
     }
   }
 
+  // ── 4. outOfRangeWaitMinutes — MANAGEMENT TUNING ──────────────
+  // If many positions close OOR with tiny profit → wait was too short
+  // If many positions close OOR with big loss → wait was too long
+  {
+    const oorCloses = perfData.filter(p => String(p.close_reason || "").toLowerCase().includes("oor") || String(p.close_reason || "").toLowerCase().includes("out of range"));
+    const current = config.management?.outOfRangeWaitMinutes ?? 15;
+
+    if (oorCloses.length >= 3) {
+      const avgOorPnl = avg(oorCloses.map(p => p.pnl_pct || 0));
+      const avgOorFees = avg(oorCloses.map(p => p.fees_earned_pct || 0));
+
+      if (avgOorPnl > -2 && avgOorPnl < 1 && avgOorFees < 0.5) {
+        // OOR closes with tiny profit/loss → fees didn't accumulate → increase wait
+        const target = Math.min(current + 10, 60);
+        if (target > current) {
+          changes.outOfRangeWaitMinutes = target;
+          rationale.outOfRangeWaitMinutes = `${oorCloses.length} OOR closes with avg PnL ${avgOorPnl.toFixed(1)}%, avg fees ${avgOorFees.toFixed(2)}% — too short, raised ${current}m → ${target}m`;
+        }
+      } else if (avgOorPnl < -10) {
+        // OOR closes with big loss → holding too long during dumps → decrease wait
+        const target = Math.max(current - 5, 10);
+        if (target < current) {
+          changes.outOfRangeWaitMinutes = target;
+          rationale.outOfRangeWaitMinutes = `${oorCloses.length} OOR closes with avg PnL ${avgOorPnl.toFixed(1)}% — holding too long, reduced ${current}m → ${target}m`;
+        }
+      }
+    }
+  }
+
+  // ── 5. stopLossPct — auto-tighten/loosen ─────────────────────
+  // If stop losses happen and avg SL loss is much worse than threshold → tighten
+  {
+    const slCloses = perfData.filter(p => String(p.close_reason || "").toLowerCase().includes("stop loss"));
+    const current = config.management?.stopLossPct ?? -20;
+
+    if (slCloses.length >= 2) {
+      const avgSlPnl = avg(slCloses.map(p => p.pnl_pct || 0));
+      // If avg SL hit is much deeper than threshold (e.g. -28% vs -20% threshold)
+      // it means positions gap through SL → tighten
+      if (avgSlPnl < current * 1.3) {
+        const target = Math.max(current + 3, -35); // tighten by 3% (less negative = tighter)
+        if (target !== current) {
+          changes.stopLossPct = target;
+          rationale.stopLossPct = `${slCloses.length} SL hits avg ${avgSlPnl.toFixed(1)}% (deeper than ${current}%) — tightened to ${target}%`;
+        }
+      }
+    }
+  }
+
+  // ── 6. takeProfitPct — raise if winners consistently hit TP early ──
+  {
+    const tpCloses = perfData.filter(p => String(p.close_reason || "").toLowerCase().includes("take profit"));
+    const current = config.management?.takeProfitPct ?? 8;
+
+    if (tpCloses.length >= 3 && winners.length >= 3) {
+      const avgTpPnl = avg(tpCloses.map(p => p.pnl_pct || 0));
+      // If TP closes are bunched right at the threshold → could run higher → raise TP
+      if (avgTpPnl >= current * 0.9 && avgTpPnl <= current * 1.2) {
+        const target = Math.min(current + 2, 25);
+        if (target > current) {
+          changes.takeProfitPct = target;
+          rationale.takeProfitPct = `${tpCloses.length} TP hits avg ${avgTpPnl.toFixed(1)}% — consistently hitting ceiling, raised ${current}% → ${target}%`;
+        }
+      }
+    }
+  }
+
   if (Object.keys(changes).length === 0) return { changes: {}, rationale: {} };
 
   // ── Persist changes to user-config.json ───────────────────────
@@ -421,9 +488,13 @@ export function evolveThresholds(perfData, config) {
 
   // Apply to live config object immediately
   const s = config.screening;
-  if (changes.minFeeActiveTvlRatio != null) s.minFeeActiveTvlRatio = changes.minFeeActiveTvlRatio;
-  if (changes.minOrganic           != null) s.minOrganic           = changes.minOrganic;
-  if (changes.maxBinsBelow         != null) config.strategy.maxBinsBelow = changes.maxBinsBelow;
+  const m = config.management;
+  if (changes.minFeeActiveTvlRatio  != null) s.minFeeActiveTvlRatio  = changes.minFeeActiveTvlRatio;
+  if (changes.minOrganic            != null) s.minOrganic            = changes.minOrganic;
+  if (changes.maxBinsBelow          != null) config.strategy.maxBinsBelow = changes.maxBinsBelow;
+  if (changes.outOfRangeWaitMinutes != null) m.outOfRangeWaitMinutes = changes.outOfRangeWaitMinutes;
+  if (changes.stopLossPct           != null) m.stopLossPct           = changes.stopLossPct;
+  if (changes.takeProfitPct         != null) m.takeProfitPct         = changes.takeProfitPct;
 
   // Log a lesson summarizing the evolution
   const data = load();

@@ -672,6 +672,7 @@ export async function getTopCandidates({ limit = 10 } = {}) {
         eligible[i].bundle_pct      = adv.bundle_pct;
         eligible[i].sniper_pct      = adv.sniper_pct;
         eligible[i].suspicious_pct  = adv.suspicious_pct;
+        eligible[i].dev_holding_pct = adv.dev_holding_pct;
         eligible[i].smart_money_buy = adv.smart_money_buy;
         eligible[i].dev_sold_all    = adv.dev_sold_all;
         eligible[i].dex_boost       = adv.dex_boost;

@@ -82,6 +82,7 @@ export const config = {
     blockPvpSymbols:   u.blockPvpSymbols   ?? false, // hard-filter PVP rivals before the LLM sees them
     maxBundlePct:      u.maxBundlePct      ?? 30,  // max bundle holding % (OKX advanced-info)
     maxBotHoldersPct:  u.maxBotHoldersPct  ?? 30,  // max bot holder addresses % (Jupiter audit)
+    maxInsiderPct:     u.maxInsiderPct     ?? null, // max insider % (dev_holding + suspicious). null = no filter. EvilPanda: 10
     maxTop10Pct:       u.maxTop10Pct       ?? 60,  // max top 10 holders concentration
     allowedLaunchpads: u.allowedLaunchpads ?? [],  // allow-list launchpads, [] = no allow-list
     blockedLaunchpads:  u.blockedLaunchpads  ?? [],  // e.g. ["letsbonk.fun", "pump.fun"]
@@ -134,6 +135,9 @@ export const config = {
     managementIntervalMin:  u.managementIntervalMin  ?? 10,
     screeningIntervalMin:   u.screeningIntervalMin   ?? 30,
     healthCheckIntervalMin: u.healthCheckIntervalMin ?? 60,
+    // Time-of-day filter: only screen during active market hours (UTC)
+    // null = always active (24/7). Array = active hours e.g. [8,9,10,...,22]
+    activeHoursUtc:         u.activeHoursUtc         ?? null,
   },
 
   // ─── LLM Settings ──────────────────────

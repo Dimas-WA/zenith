@@ -140,6 +140,15 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 3 — New Features (Auto-blacklist, Whale Buttons, Time Filter)
+
+- [x] Auto-blacklist rugged tokens — PnL <= -30% post-close → auto addToBlacklist
+- [x] Telegram whale alert quick-close — HIGH severity → inline button "Close" / "Ignore"
+- [x] Whale callback handler BEFORE busy check (instant response)
+- [x] Time-of-day filter — config.schedule.activeHoursUtc (null = 24/7, array = specific hours)
+- [x] activeHoursUtc in config.js, executor CONFIG_MAP, number array coercion
+- [x] No existing code touched — all additive changes only
+
 ---
 
 ## Current Config (Running)

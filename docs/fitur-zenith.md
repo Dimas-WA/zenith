@@ -24,6 +24,10 @@
 | Telegram Integration | ✅ Full (all commands) | High |
 | Windows Support | ✅ cross-env | Medium |
 | Rename Meridian→Zenith | ✅ Complete | — |
+| Auto-Blacklist Rugs | ✅ Active (PnL <= -30%) | Very High |
+| Whale Quick-Close | ✅ Telegram inline buttons | High |
+| Time-of-Day Filter | ✅ activeHoursUtc config | Medium |
+| Hybrid Deploy | ✅ AI auto single/dual-side | High |
 
 ---
 
@@ -596,12 +600,81 @@ AI otomatis pilih deploy mode berdasarkan MTF momentum:
 
 ---
 
+## 🚫 17. AUTO-BLACKLIST RUGGED TOKENS
+
+**File:** executor.js (post-close hook)
+
+### Cara Kerja
+Setelah `close_position`, kalau PnL <= -30%:
+- Token otomatis masuk blacklist (`token-blacklist.json`)
+- Agent ga bakal deploy ke token itu lagi selamanya
+- Log: `[BLACKLIST] Auto-blacklisted RUGTOKEN — PnL -45.2%`
+
+### Threshold
+- PnL <= -30% → auto-blacklist
+- PnL <= -50% atau reason contains "rug"/"crash" → flagged as rug
+
+---
+
+## 🐋 18. WHALE ALERT QUICK-CLOSE (Telegram Inline Buttons)
+
+**File:** index.js (management cycle + callback handler)
+
+### Cara Kerja
+Kalau whale tracker detect HIGH severity alert:
+1. Telegram kirim message dengan 2 tombol:
+   - 🔴 **Close Position** → instant close (bypass busy check)
+   - 👀 **Ignore** → dismiss alert
+2. User tap 1 tombol → action langsung
+
+### Flow
+```
+Management cycle → whale check → HIGH alert detected
+  ↓
+Telegram: "🐋 WHALE ALERT: Whale abc EXITED (was 5.2%)"
+          [🔴 Close Position]  [👀 Ignore]
+  ↓
+User tap Close → closePosition() → done
+```
+
+---
+
+## 🕐 19. TIME-OF-DAY FILTER
+
+**File:** config.js + index.js (screening cycle gate)
+
+### Cara Kerja
+Skip screening cycle di jam-jam sepi (hemat LLM cost + avoid bad deploys):
+
+```json
+"activeHoursUtc": [1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15, 16, 17, 18, 19, 20]
+```
+
+| Value | Behavior |
+|-------|----------|
+| `null` | 24/7 aktif (default — cocok buat paper trading) |
+| `[8,9,...,22]` | Hanya screen jam 8-22 UTC |
+| `[1,...,8,13,...,20]` | Asia session + US session |
+
+### Set via Telegram
+```
+/setcfg activeHoursUtc [1,2,3,4,5,6,7,8,13,14,15,16,17,18,19,20]
+```
+
+Reset ke 24/7:
+```
+/setcfg activeHoursUtc null
+```
+
+### Catatan
+- Management tetap jalan 24/7 (monitor posisi ga boleh stop)
+- Cuma screening yang di-gate (no new deploys during dead hours)
+
+---
+
 ## 🛠️ NEXT IDEAS (Belum Implement)
 
 - Performance dashboard (Telegram visual chart)
-- Auto-blacklist rugged tokens (token crash post-close → add to blacklist)
-- Time-of-day filter (Asian session vs US session performance)
 - Custom strategy library expansion (panda strategy, overnight classic, dll)
 - Sentiment analysis dari narrative
 - LP behavior copy-trade dari top wallets
-- Telegram inline buttons buat whale alerts (quick close)

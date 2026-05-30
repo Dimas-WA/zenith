@@ -372,7 +372,26 @@ export function paperFormatStatus() {
   const pos = paperGetPositions();
   if (pos.total_positions === 0) return "📝 Paper Trading: No virtual positions open.";
 
-  const lines = [`📝 PAPER TRADING — ${pos.total_positions} virtual position(s)`, ""];
+  // Portfolio summary
+  const totalDeployedSol = pos.positions.reduce((s, p) => s + p.amount_sol, 0);
+  const totalValueUsd = pos.positions.reduce((s, p) => s + p.value_usd, 0);
+  const totalPnlUsd = pos.positions.reduce((s, p) => s + p.total_pnl_usd, 0);
+  const totalFeesUsd = pos.positions.reduce((s, p) => s + p.fees_earned_usd, 0);
+  const solPrice = pos.positions[0]?.value_usd > 0
+    ? (pos.positions[0].value_usd / pos.positions[0].amount_sol)
+    : 82;
+  const totalDeployedUsd = totalDeployedSol * solPrice;
+  const totalPnlPct = totalDeployedUsd > 0 ? (totalPnlUsd / totalDeployedUsd * 100) : 0;
+
+  const lines = [
+    `📝 PAPER TRADING — ${pos.total_positions} position(s)`,
+    ``,
+    `💰 Portfolio: ${totalDeployedSol.toFixed(2)} SOL deployed (~$${totalDeployedUsd.toFixed(0)})`,
+    `📊 Value: $${totalValueUsd.toFixed(2)} | PnL: ${totalPnlPct >= 0 ? "+" : ""}${totalPnlPct.toFixed(2)}% ($${totalPnlUsd >= 0 ? "+" : ""}${totalPnlUsd.toFixed(2)})`,
+    `💸 Fees earned: $${totalFeesUsd.toFixed(2)}`,
+    `💲 SOL price: ~$${solPrice.toFixed(2)}`,
+    "",
+  ];
 
   for (const p of pos.positions) {
     const range = p.in_range ? "🟢 IN" : `🔴 OOR ${p.oor_minutes}m`;
@@ -380,7 +399,7 @@ export function paperFormatStatus() {
     const binArrow = p.bin_moved > 0 ? `↑${p.bin_moved}` : p.bin_moved < 0 ? `↓${Math.abs(p.bin_moved)}` : "→0";
     const modeIcon = p.deploy_mode === "dual-side" ? "↕️" : "⬇️";
     lines.push(
-      `${pnlIcon} ${p.pool} | ${p.amount_sol} SOL | ${p.hold_minutes}m | ${modeIcon} ${p.deploy_mode || "single"}`,
+      `${pnlIcon} ${p.pool} | ${p.amount_sol} SOL ($${(p.amount_sol * solPrice).toFixed(0)}) | ${p.hold_minutes}m | ${modeIcon} ${p.deploy_mode || "single"}`,
       `   Bin: ${p.entry_bin} → ${p.current_bin} (${binArrow}) | ${range}`,
       `   IL: ${p.price_pnl_pct}% | Fees: $${p.fees_earned_usd} | Total: ${p.total_pnl_pct}% ($${p.total_pnl_usd.toFixed(2)})`,
       `   Risk: ${p.risk_score || "?"}/100 | Updates: ${p.updates}`,

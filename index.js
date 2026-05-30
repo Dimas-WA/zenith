@@ -263,6 +263,19 @@ export async function runManagementCycle({ silent = false } = {}) {
       whaleAlerts = whaleResult.alerts || [];
       if (whaleResult.high_severity > 0) {
         log("whale", `⚠️ ${whaleResult.high_severity} HIGH severity whale alert(s) detected`);
+        // Send Telegram alert with quick-close buttons for HIGH severity
+        if (!silent && telegramEnabled()) {
+          const highAlerts = whaleAlerts.filter(a => a.severity === "HIGH" && a.position);
+          for (const alert of highAlerts) {
+            sendMessageWithButtons(
+              `🐋 WHALE ALERT\n\n${alert.message}\n\nPool: ${alert.pair || alert.pool?.slice(0, 8)}`,
+              [[
+                { text: "🔴 Close Position", callback_data: `whale:close:${alert.position}` },
+                { text: "👀 Ignore", callback_data: `whale:ignore:${alert.position}` },
+              ]]
+            ).catch(() => {});
+          }
+        }
       }
       // Prune snapshots for tokens no longer held
       pruneSnapshots(positions.map(p => p.base_mint).filter(Boolean));
@@ -445,6 +458,17 @@ export async function runScreeningCycle({ silent = false } = {}) {
   _screeningBusy = true; // set immediately — prevents TOCTOU race with concurrent callers
   _screeningLastTriggered = Date.now();
 
+  // Time-of-day filter — skip screening during dead hours
+  const activeHours = config.schedule.activeHoursUtc;
+  if (Array.isArray(activeHours) && activeHours.length > 0) {
+    const hourUtc = new Date().getUTCHours();
+    if (!activeHours.includes(hourUtc)) {
+      log("cron", `Screening skipped — hour ${hourUtc} UTC not in active hours ${JSON.stringify(activeHours)}`);
+      _screeningBusy = false;
+      return null;
+    }
+  }
+
   // Hard guards — don't even run the agent if preconditions aren't met
   let prePositions, preBalance;
   let liveMessage = null;
@@ -549,6 +573,18 @@ export async function runScreeningCycle({ silent = false } = {}) {
         log("screening", `Bot-holder filter: dropped ${pool.name} — bots ${botPct}% > ${maxBotHoldersPct}%`);
         filteredOut.push({ name: pool.name, reason: `bot holders ${botPct}% > ${maxBotHoldersPct}%` });
         return false;
+      }
+      // Insider filter: dev_holding_pct + suspicious_pct > maxInsiderPct
+      const maxInsiderPct = config.screening.maxInsiderPct;
+      if (maxInsiderPct != null) {
+        const devPct = Number(pool.dev_holding_pct ?? 0);
+        const suspPct = Number(pool.suspicious_pct ?? 0);
+        const insiderPct = devPct + suspPct;
+        if (insiderPct > maxInsiderPct) {
+          log("screening", `Insider filter: dropped ${pool.name} — insiders ${insiderPct.toFixed(1)}% (dev ${devPct}% + suspicious ${suspPct}%) > ${maxInsiderPct}%`);
+          filteredOut.push({ name: pool.name, reason: `insiders ${insiderPct.toFixed(1)}% > ${maxInsiderPct}%` });
+          return false;
+        }
       }
       return true;
     });
@@ -703,9 +739,15 @@ STEPS:
 2. Check mtf_momentum: SKIP candidates with mtf_momentum=REJECTED. Prefer BULLISH but MIXED is still deployable.
 3. Pick the best candidate (highest risk_score + best momentum + good narrative/smart wallets).
 4. DEPLOY AMOUNT: always use ${baseDeployAmount} SOL as amount_y. Cap at ${config.risk.maxDeployAmount} SOL.
-5. HYBRID MODE — choose based on candidate's mtf_momentum:
-   - BULLISH / LEANING_BULLISH → DUAL-SIDE: set bins_above = bins_below (same formula). Keep amount_x=0 (system handles).
-   - MIXED / BEARISH / no data → SINGLE-SIDE: bins_above=0, amount_x=0.
+5. DEPLOY MODE — DEFAULT IS SINGLE-SIDE SOL (safer for memecoin):
+   - SINGLE-SIDE (default): bins_above=0, amount_x=0. Use for ALL candidates UNLESS all 4 dual-side conditions are met.
+   - DUAL-SIDE (rare — ONLY when ALL conditions are true):
+     1. mtf_momentum = BULLISH (full BULLISH only, NOT leaning_bullish or mixed)
+     2. risk_score >= 70 (STRONG or LEGENDARY tier)
+     3. volatility <= 2.0 (low vol = less IL risk)
+     4. organic_score >= 75
+   If ANY condition fails → SINGLE-SIDE. When in doubt, ALWAYS SINGLE-SIDE.
+   Dual-side bins_above = bins_below (same formula). Keep amount_x=0.
 6. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
    bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*(${config.strategy.maxBinsBelow - config.strategy.minBinsBelow})) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
    bins_above = same formula IF dual-side mode, else 0.
@@ -1478,6 +1520,29 @@ async function telegramHandler(msg) {
     }
     return;
   }
+  // ─── Whale alert quick-close callback ─────────────────────
+  if (msg?.isCallback && text.startsWith("whale:")) {
+    const parts = text.split(":");
+    const action = parts[1];
+    const positionAddr = parts.slice(2).join(":");
+    if (action === "close" && positionAddr) {
+      await answerCallbackQuery(msg.callbackQueryId, "Closing position...").catch(() => {});
+      try {
+        const result = await closePosition({ position_address: positionAddr, reason: "whale alert quick-close" });
+        if (result.success || result.dry_run) {
+          await editMessage(`✅ Closed via whale alert\nPosition: ${positionAddr.slice(0, 12)}...\nPnL: ${result.pnl_usd ?? "n/a"}`, msg.messageId).catch(() => {});
+        } else {
+          await editMessage(`❌ Close failed: ${result.error || "unknown"}`, msg.messageId).catch(() => {});
+        }
+      } catch (e) {
+        await editMessage(`❌ Close error: ${e.message}`, msg.messageId).catch(() => {});
+      }
+    } else if (action === "ignore") {
+      await answerCallbackQuery(msg.callbackQueryId, "Ignored").catch(() => {});
+      await editMessage(`👀 Whale alert ignored for ${positionAddr.slice(0, 12)}...`, msg.messageId).catch(() => {});
+    }
+    return;
+  }
   if (text === "/settings" || text === "/menu" || text === "/configmenu") {
     await showSettingsMenu().catch((e) => sendMessage(`Settings error: ${e.message}`).catch(() => {}));
     return;
@@ -1882,8 +1947,8 @@ if (isMain && isTTY) {
   // ── Startup: show wallet + top candidates ──
   console.log(`
 ╔═══════════════════════════════════════════╗
-║           Z E N I T H  — Ready           ║
-║     Autonomous DLMM LP Agent · Solana    ║
+║           Z E N I T H  — Ready            ║
+║     Autonomous DLMM LP Agent · Solana     ║
 ╚═══════════════════════════════════════════╝
 `);
 
@@ -1972,7 +2037,7 @@ Commands:
       await runBusy(async () => {
         console.log("\nAgent is picking and deploying...\n");
         const { content: reply } = await agentLoop(
-          `get_top_candidates and deploy only if a candidate is clearly worth it. If there is only one weak candidate, report NO DEPLOY. For a valid deploy, use amount_y=${DEPLOY} and bins_below from positive volatility. Choose deploy mode: BULLISH momentum → dual-side (bins_above = bins_below), else single-side (bins_above=0). Execute now, don't ask.`,
+          `get_top_candidates and deploy only if a candidate is clearly worth it. If there is only one weak candidate, report NO DEPLOY. For a valid deploy, use amount_y=${DEPLOY} and bins_below from positive volatility. Default single-side (bins_above=0). Only use dual-side if ALL: full BULLISH, risk>=70, vol<=2.0, organic>=75. Execute now, don't ask.`,
           config.llm.maxSteps,
           [],
           "SCREENER"

@@ -242,6 +242,10 @@ function normalizeConfigValue(key, value) {
     "generalApiKey",
   ]);
   if (value === null) return null;
+  if (key === "activeHoursUtc") {
+    if (!Array.isArray(value)) throw new Error("activeHoursUtc must be an array of hour numbers (0-23)");
+    return value.map(Number).filter(n => Number.isFinite(n) && n >= 0 && n <= 23);
+  }
   if (booleanKeys.has(key)) return coerceBoolean(value, key);
   if (arrayKeys.has(key)) return coerceStringArray(value, key);
   if (stringKeys.has(key)) return coerceString(value, key);
@@ -396,6 +400,7 @@ const toolMap = {
       blockPvpSymbols: ["screening", "blockPvpSymbols"],
       maxBundlePct:     ["screening", "maxBundlePct"],
       maxBotHoldersPct: ["screening", "maxBotHoldersPct"],
+      maxInsiderPct: ["screening", "maxInsiderPct"],
       maxTop10Pct: ["screening", "maxTop10Pct"],
       allowedLaunchpads: ["screening", "allowedLaunchpads"],
       blockedLaunchpads: ["screening", "blockedLaunchpads"],
@@ -436,6 +441,7 @@ const toolMap = {
       managementIntervalMin: ["schedule", "managementIntervalMin"],
       screeningIntervalMin: ["schedule", "screeningIntervalMin"],
       healthCheckIntervalMin: ["schedule", "healthCheckIntervalMin"],
+      activeHoursUtc: ["schedule", "activeHoursUtc"],
       // models
       managementModel: ["llm", "managementModel"],
       screeningModel: ["llm", "screeningModel"],
@@ -666,6 +672,22 @@ export async function executeTool(name, args) {
         } catch (e) {
           log("executor_warn", `Circuit breaker eval failed: ${e.message}`);
         }
+        // Auto-blacklist tokens that caused heavy losses (likely rug/scam)
+        const closePnlPct = Number(result.pnl_pct ?? 0);
+        if (closePnlPct <= -30 && result.base_mint) {
+          try {
+            const closeReason = String(args.reason || result.close_reason || "").toLowerCase();
+            const isRug = closePnlPct <= -50 || closeReason.includes("rug") || closeReason.includes("crash");
+            addToBlacklist({
+              mint: result.base_mint,
+              symbol: result.pool_name?.split("-")[0] || result.base_mint.slice(0, 8),
+              reason: `Auto-blacklisted: closed at ${closePnlPct.toFixed(1)}% PnL (${args.reason || "heavy loss"})`,
+            });
+            log("blacklist", `Auto-blacklisted ${result.pool_name || result.base_mint.slice(0, 8)} — PnL ${closePnlPct.toFixed(1)}%`);
+          } catch (e) {
+            log("executor_warn", `Auto-blacklist failed: ${e.message}`);
+          }
+        }
         // Note low-yield closes in pool memory so screener avoids redeploying
         if (args.reason && args.reason.toLowerCase().includes("yield")) {
           const poolAddr = result.pool || args.pool_address;
@@ -734,6 +756,16 @@ async function runSafetyChecks(name, args) {
         return {
           pass: false,
           reason: `Circuit breaker tripped: ${circuit.reason}. Reset at: ${circuit.reset_at || "manual reset required"}.`,
+        };
+      }
+
+      // ─── Risk Score Guard ─────────────────────────
+      // Block deploy if risk_score is missing/null — means risk scoring failed
+      // and we have no basis to evaluate the pool quality
+      if (args.risk_score == null) {
+        return {
+          pass: false,
+          reason: "risk_score missing — risk scoring failed for this candidate. Cannot evaluate pool quality. Skip and wait for next cycle.",
         };
       }
 
