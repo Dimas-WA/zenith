@@ -380,3 +380,57 @@ node cli.js manage --dry-run
 node cli.js config set screeningModel deepseek-v4-pro
 node cli.js config set managementModel off-v2-flash
 ```
+
+## 9. PM2 Cheat Sheet Deployment - Zenith Bot on VPS Ubuntu
+### 🛠️ 9.1 Setup & Inisialisasi Awal (Sekali Doang)
+
+Pastikan posisi direktori terminal Anda sudah berada di dalam folder project sebelum mengeksekusi perintah di bawah ini:
+
+```bash
+cd ~/zenith
+```
+
+Jalankan bot menggunakan perintah spesifik di bawah ini. Perintah ini memaksa PM2 untuk mengunci folder kerja (`--cwd`) dan meng-inject seluruh variabel lingkungan dari file `.env` lokal (`--update-env`), sehingga memastikan bot Telegram dan API Key terdeteksi dengan sempurna:
+
+```bash
+pm2 start index.js --name "zenith" --cwd /root/zenith --update-env
+```
+
+---
+
+### 🔒 9.2 Konfigurasi Auto-Restart (Kebal Reboot VPS)
+
+Agar bot otomatis menyala kembali ketika VPS Hostinger mengalami maintenance, crash, atau reboot berkala, ikuti ritual wajib ini:
+
+1. **Generate service startup sistem:**
+   ```bash
+   sudo pm2 startup systemd
+   ```
+2. **Eksekusi Command Environment:**
+   Perhatikan layar terminal setelah menjalankan perintah di atas. PM2 akan memunculkan satu baris perintah panjang yang diawali dengan kata `sudo env PATH=...`. **Copy** baris tersebut secara utuh, lalu **paste** dan jalankan di terminal.
+3. **Kunci dan Simpan Proses:**
+   ```bash
+   pm2 save
+   ```
+
+---
+
+### 📊 9.3 Perintah Operasional Harian (Cheat Sheet)
+
+Gunakan kombinasi perintah pendek berikut untuk memantau dan mengendalikan bot sehari-hari:
+
+| Perintah | Fungsi |
+| :--- | :--- |
+| `pm2 logs zenith --lines 30` | Mengintip 30 baris terakhir log aktivitas secara *real-time* (Screening, Analisa MTF, Transaksi). |
+| `pm2 list` | Menampilkan tabel status aplikasi (Pastikan status berwarna hijau / `online`). |
+| `pm2 restart zenith` | Memuat ulang bot ke memori (Wajib dijalankan setiap kali setelah melakukan `git pull` kodingan baru). |
+| `pm2 stop zenith` | Menghentikan kinerja bot untuk sementara waktu. |
+| `pm2 delete zenith` | Menghapus bot dari daftar kelola PM2 jika ingin melakukan setup ulang dari nol. |
+| `pm2 flush` | Membersihkan riwayat file log yang sudah terlalu penuh agar ruang penyimpanan VPS tetap lega. |
+
+---
+
+### 📝 9.4 Catatan Penting Pasca Deployment
+
+* **Modus Simulasi (`DRY_RUN=true`):** Jika status pada `.env` adalah *true*, bot akan tetap memproses data market, melakukan screening token via Xiaomimo, dan menganalisa indikator, namun **tidak akan mengeksekusi transaksi on-chain** pada jaringan Solana.
+* **Log Keluar:** Untuk keluar dari tampilan *live tracking* `pm2 logs`, tekan kombinasi tombol **`Ctrl + C`** pada keyboard Anda. Bot akan tetap berjalan aman di background meskipun terminal SSH ditutup.
