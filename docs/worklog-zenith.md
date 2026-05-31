@@ -140,6 +140,16 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 6 — Paper Budget Realistic + Telegram 429 Fix
+
+- [x] Paper budget realistic: `available = paperBudgetSol + realizedPnlSol - deployedSol`
+- [x] Realized PnL (profit/loss dari closed trades) dikurangin/ditambahin ke budget
+- [x] Fees yang udah earned juga masuk compound ke budget (via total_pnl_usd yang include fees)
+- [x] `paperBudgetSol` configurable di user-config.json (default 5.0, set ke 10)
+- [x] Fallback error path juga ikut realistic budget
+- [x] Telegram 429 rate limit: respect retry_after, skip sendChatAction saat cooldown
+- [x] Typing indicator interval: 4s → 15s (75% lebih jarang)
+
 ### Session 5 — Paper Trading → Full Learning Pipeline
 
 - [x] Paper close → `recordPerformance()` → creates lessons.json + pool-memory.json (same as real close)
@@ -201,5 +211,7 @@ Mode:       DRY RUN (paper trading)
 16. **Instant commands (read-only) SELALU taruh SEBELUM busy check.** Ga ada alasan /paper harus nunggu screening selesai
 17. **Dual-side memecoin = bahaya.** Data paper trade: single-side 5W/1L, dual-side 0W/4L. Default SINGLE-SIDE untuk memecoin
 18. **Selalu update MD file setelah selesai session** — jangan biarin ketinggalan
-19. **Paper trading HARUS trigger semua learning systems** — blacklist, lessons, pool-memory. Kalau ga, paper trading cuma cosmetic dan agent ga belajar apa-apa dari dry run
+19. **Paper trading HARUS trigger semua learning systems**
+20. **Paper budget harus realistic** — budget berkurang saat deploy, bertambah saat profit, berkurang saat loss. Kalau tidak, agent bisa deploy unlimited dan paper trade jadi tidak bermakna
+21. **Telegram sendChatAction jangan di-loop cepat** — 4s interval terlalu cepat. Minimal 15s. Dan selalu respect 429 retry_after — blacklist, lessons, pool-memory. Kalau ga, paper trading cuma cosmetic dan agent ga belajar apa-apa dari dry run
 20. **Async propagation** — kalau function jadi async, semua caller WAJIB di-await. Grep `functionName` di semua files untuk verify

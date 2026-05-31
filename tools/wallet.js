@@ -108,12 +108,37 @@ export async function getWalletBalances() {
       total_usd: Math.round((data.totalUsdValue || 0) * 100) / 100,
     };
 
-    // Dry run paper trading: simulate 5 SOL if wallet is empty
+    // Dry run paper trading: realistic budget = initial + realized PnL - deployed
     if (process.env.DRY_RUN === "true" && result.sol < 0.5) {
-      result.sol = 5.0;
-      result.sol_usd = Math.round(result.sol_price * 5 * 100) / 100;
+      const { config } = await import("../config.js");
+      const PAPER_BUDGET = config.management.paperBudgetSol ?? 5.0;
+      const solPrice = result.sol_price || 82;
+      let deployedSol = 0;
+      let realizedPnlSol = 0;
+
+      try {
+        const { paperGetPositions, paperGetPerformance } = await import("../paper-trading.js");
+
+        // Subtract open positions from budget
+        const openPositions = paperGetPositions();
+        deployedSol = openPositions.positions.reduce((s, p) => s + (p.amount_sol || 0), 0);
+
+        // Add realized PnL from closed trades (includes fees)
+        // total_pnl_usd already includes fees_earned_usd
+        const perf = paperGetPerformance();
+        if (perf.total_trades > 0) {
+          realizedPnlSol = (perf.total_pnl_usd || 0) / solPrice;
+        }
+      } catch { /* ignore */ }
+
+      const availableSol = Math.max(0.2, PAPER_BUDGET + realizedPnlSol - deployedSol);
+      result.sol = Math.round(availableSol * 1e6) / 1e6;
+      result.sol_usd = Math.round(solPrice * availableSol * 100) / 100;
       result.total_usd = result.sol_usd;
       result._simulated = true;
+      result._paper_budget = PAPER_BUDGET;
+      result._paper_deployed = Math.round(deployedSol * 1e4) / 1e4;
+      result._paper_realized_pnl_sol = Math.round(realizedPnlSol * 1e4) / 1e4;
     }
 
     return result;
@@ -131,10 +156,22 @@ export async function getWalletBalances() {
     };
 
     if (process.env.DRY_RUN === "true") {
-      fallback.sol = 5.0;
+      let budget = 5.0;
+      let deployed = 0;
+      let pnlSol = 0;
+      try {
+        const { config } = await import("../config.js");
+        const { paperGetPositions, paperGetPerformance } = await import("../paper-trading.js");
+        budget = config.management.paperBudgetSol ?? 5.0;
+        deployed = paperGetPositions().positions.reduce((s, p) => s + (p.amount_sol || 0), 0);
+        const perf = paperGetPerformance();
+        if (perf.total_trades > 0) pnlSol = (perf.total_pnl_usd || 0) / 82;
+      } catch { /* ignore */ }
+      const available = Math.max(0.2, budget + pnlSol - deployed);
+      fallback.sol = Math.round(available * 1e6) / 1e6;
       fallback.sol_price = 82;
-      fallback.sol_usd = 410;
-      fallback.total_usd = 410;
+      fallback.sol_usd = Math.round(available * 82 * 100) / 100;
+      fallback.total_usd = fallback.sol_usd;
       fallback._simulated = true;
     }
 

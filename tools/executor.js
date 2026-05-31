@@ -849,10 +849,19 @@ async function runSafetyChecks(name, args) {
 
       // Check position count limit + duplicate pool guard — force fresh scan to avoid stale cache
       const positions = await getMyPositions({ force: true });
-      if (positions.total_positions >= config.risk.maxPositions) {
+      // In dry run, also count paper positions toward the limit
+      let effectivePositionCount = positions.total_positions;
+      if (process.env.DRY_RUN === "true") {
+        try {
+          const { paperGetPositions } = await import("../paper-trading.js");
+          const paperPos = paperGetPositions();
+          effectivePositionCount += paperPos.total_positions;
+        } catch { /* ignore */ }
+      }
+      if (effectivePositionCount >= config.risk.maxPositions) {
         return {
           pass: false,
-          reason: `Max positions (${config.risk.maxPositions}) reached. Close a position first.`,
+          reason: `Max positions (${config.risk.maxPositions}) reached (${effectivePositionCount} open including paper). Close a position first.`,
         };
       }
       const alreadyInPool = positions.positions.some(
