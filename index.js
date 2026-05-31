@@ -1558,9 +1558,26 @@ async function telegramHandler(msg) {
     return;
   }
   if (text === "/paperreset") {
+    // Ask for confirmation — prevent accidental reset
+    await sendMessageWithButtons(
+      "⚠️ Reset semua paper trading data? Ini akan hapus semua posisi dan history!",
+      [[
+        { text: "✅ Ya, reset", callback_data: "paperreset:confirm" },
+        { text: "❌ Batal", callback_data: "paperreset:cancel" },
+      ]]
+    ).catch(() => {});
+    return;
+  }
+  if (msg?.isCallback && text === "paperreset:confirm") {
     const { paperReset } = await import("./paper-trading.js");
     paperReset();
+    await answerCallbackQuery(msg.callbackQueryId, "Reset done").catch(() => {});
     await sendMessage("📝 Paper trading data cleared.").catch(() => {});
+    return;
+  }
+  if (msg?.isCallback && text === "paperreset:cancel") {
+    await answerCallbackQuery(msg.callbackQueryId, "Dibatalkan").catch(() => {});
+    await sendMessage("❌ Reset dibatalkan.").catch(() => {});
     return;
   }
   if (text === "/start") {
@@ -2071,9 +2088,18 @@ Commands:
     }
 
     if (input === "/paperreset") {
-      const { paperReset } = await import("./paper-trading.js");
-      paperReset();
-      console.log("\n📝 Paper trading data cleared.\n");
+      const { createInterface } = await import("readline");
+      const confirm = await new Promise(resolve => {
+        const r = createInterface({ input: process.stdin, output: process.stdout });
+        r.question("⚠️ Reset semua paper trading data? (y/N): ", ans => { r.close(); resolve(ans); });
+      });
+      if (confirm.toLowerCase() === "y") {
+        const { paperReset } = await import("./paper-trading.js");
+        paperReset();
+        console.log("\n📝 Paper trading data cleared.\n");
+      } else {
+        console.log("\n❌ Reset dibatalkan.\n");
+      }
       rl.prompt();
       return;
     }

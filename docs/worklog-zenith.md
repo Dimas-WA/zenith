@@ -140,6 +140,13 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 7 — Auto-backup + Konfirmasi Reset
+
+- [x] `paperReset()` auto-backup sebelum hapus — timestamped, tidak overwrite
+- [x] `/paperreset` Telegram: minta konfirmasi via inline button (✅ Ya / ❌ Batal)
+- [x] `/paperreset` REPL: minta konfirmasi ketik "y"
+- [x] Backup file format: `paper-history-backup-YYYY-MM-DDTHH-MM-SS.json`
+
 ### Session 6 — Paper Budget Realistic + Telegram 429 Fix
 
 - [x] Paper budget realistic: `available = paperBudgetSol + realizedPnlSol - deployedSol`
@@ -212,6 +219,8 @@ Mode:       DRY RUN (paper trading)
 17. **Dual-side memecoin = bahaya.** Data paper trade: single-side 5W/1L, dual-side 0W/4L. Default SINGLE-SIDE untuk memecoin
 18. **Selalu update MD file setelah selesai session** — jangan biarin ketinggalan
 19. **Paper trading HARUS trigger semua learning systems**
-20. **Paper budget harus realistic** — budget berkurang saat deploy, bertambah saat profit, berkurang saat loss. Kalau tidak, agent bisa deploy unlimited dan paper trade jadi tidak bermakna
+20. **Paper budget harus realistic**
+21. **Setiap destructive action wajib: backup dulu, konfirmasi dulu.** paperreset, data penting lainnya — jangan langsung hapus tanpa safety net
+22. **paper-history.json adalah raw data, bukan satu-satunya learning.** Yang penting adalah lessons.json, pool-memory.json, signal-weights.json — ini yang dipakai AI tiap cycle — budget berkurang saat deploy, bertambah saat profit, berkurang saat loss. Kalau tidak, agent bisa deploy unlimited dan paper trade jadi tidak bermakna
 21. **Telegram sendChatAction jangan di-loop cepat** — 4s interval terlalu cepat. Minimal 15s. Dan selalu respect 429 retry_after — blacklist, lessons, pool-memory. Kalau ga, paper trading cuma cosmetic dan agent ga belajar apa-apa dari dry run
 20. **Async propagation** — kalau function jadi async, semua caller WAJIB di-await. Grep `functionName` di semua files untuk verify

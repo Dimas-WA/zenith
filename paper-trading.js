@@ -479,6 +479,21 @@ export function paperFormatPerformance() {
 }
 
 export function paperReset() {
+  // Auto-backup before clearing — timestamped so multiple backups don't overwrite
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  try {
+    const positions = loadPositions();
+    const history = loadHistory();
+    if (history.length > 0 || positions.length > 0) {
+      const backupPos = path.join(__dirname, `paper-positions-backup-${ts}.json`);
+      const backupHist = path.join(__dirname, `paper-history-backup-${ts}.json`);
+      fs.writeFileSync(backupPos, JSON.stringify(positions, null, 2));
+      fs.writeFileSync(backupHist, JSON.stringify(history, null, 2));
+      log("paper", `Auto-backup created: paper-history-backup-${ts}.json (${history.length} trades)`);
+    }
+  } catch (e) {
+    log("paper_warn", `Backup failed: ${e.message}`);
+  }
   savePositions([]);
   saveHistory([]);
   log("paper", "Paper trading data cleared");

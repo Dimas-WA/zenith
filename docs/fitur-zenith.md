@@ -676,6 +676,61 @@ Reset ke 24/7:
 
 ---
 
+## 🧠 Learning Architecture — Pola Belajar Agent
+
+### 3 Layer Learning
+
+```
+LAYER 1 — Raw Data (paper-history.json, state.json)
+  ↓ via recordPerformance() setiap posisi close
+LAYER 2 — Processed Learning (lessons.json, pool-memory.json, signal-weights.json)
+  ↓ injected ke system prompt setiap cycle
+LAYER 3 — Config Evolution (user-config.json)
+  ↓ evolveThresholds() tiap 5 posisi close
+```
+
+### Kapan AI Pakai Data
+
+| File | Isi | Kapan Dipakai |
+|------|-----|--------------|
+| `lessons.json` | Aturan yang didapat dari closed positions | **Tiap screening & management cycle** — diinject ke system prompt |
+| `pool-memory.json` | History per-pool (pernah rugi di sini? pernah profit?) | **Tiap screening** — avoid pool yang pernah nyakitin |
+| `signal-weights.json` | Darwinian weights (sinyal mana yang terbukti bagus) | **Tiap scoring candidate** — boost/decay per signal |
+| `user-config.json` | Threshold yang sudah di-tune | **Startup + tiap cycle** — config aktif |
+
+### Kapan Learning Terjadi
+
+| Trigger | Action | File Diupdate |
+|---------|--------|--------------|
+| Posisi close | `recordPerformance()` | lessons.json, pool-memory.json |
+| Tiap 5 close | `evolveThresholds()` | user-config.json (OOR wait, SL, TP, fee ratio) |
+| Tiap 5 close | Darwinian recalc | signal-weights.json |
+| LLM screening | `getLessonsForPrompt()` | — (read only, inject ke prompt) |
+
+### Hierarki Data
+
+```
+paper-history.json  → RAW — bisa hilang, bisa di-reset
+                         ↓ (ditulis saat close)
+lessons.json        → PROCESSED — yang penting, jangan hilang
+pool-memory.json    → PROCESSED — yang penting, jangan hilang
+signal-weights.json → PROCESSED — yang penting, jangan hilang
+user-config.json    → EVOLVED — hasil tuning otomatis
+```
+
+**Kalau `paper-history.json` hilang** → tidak fatal, learning tetap jalan dari lessons.json
+
+**Kalau `lessons.json` hilang** → agent mulai dari nol, tidak tahu pool mana yang bagus/buruk
+
+### Auto-backup
+
+Setiap `/paperreset`:
+1. Konfirmasi dulu (Telegram button / REPL "y")
+2. Auto-backup ke `paper-history-backup-{timestamp}.json`
+3. Baru hapus
+
+---
+
 ## 🛠️ NEXT IDEAS (Belum Implement)
 
 - Performance dashboard (Telegram visual chart)
