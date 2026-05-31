@@ -227,7 +227,7 @@ export async function runManagementCycle({ silent = false } = {}) {
           fetchPoolDetail: null,
           solPrice,
         });
-        const exits = paperCheckExits(config.management);
+        const exits = await paperCheckExits(config.management);
         for (const exit of exits) {
           log("paper", `Auto-closed: ${exit.pool_name} → ${exit.close_reason}`);
           if (!silent && telegramEnabled()) {

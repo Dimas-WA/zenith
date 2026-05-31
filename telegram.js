@@ -83,8 +83,20 @@ export function isEnabled() {
   return !!TOKEN;
 }
 
+// Global 429 cooldown — if Telegram rate-limits us, pause all requests
+let _telegramCooldownUntil = 0;
+
 async function postTelegram(method, body) {
   if (!TOKEN || !chatId) return null;
+
+  // Respect global cooldown from previous 429
+  const now = Date.now();
+  if (now < _telegramCooldownUntil) {
+    // During cooldown, silently skip non-critical calls like sendChatAction
+    if (method === "sendChatAction") return null;
+    await new Promise(r => setTimeout(r, _telegramCooldownUntil - now));
+  }
+
   try {
     const res = await fetch(`${BASE}/${method}`, {
       method: "POST",
@@ -93,6 +105,19 @@ async function postTelegram(method, body) {
     });
     if (!res.ok) {
       const err = await res.text();
+      // Handle 429 — respect retry_after
+      if (res.status === 429) {
+        try {
+          const parsed = JSON.parse(err);
+          const retryAfter = parsed?.parameters?.retry_after || 10;
+          _telegramCooldownUntil = Date.now() + (retryAfter * 1000);
+          // Only log once per cooldown to avoid spam
+          if (method !== "sendChatAction") {
+            log("telegram_warn", `Rate limited. Cooling down ${retryAfter}s`);
+          }
+        } catch { _telegramCooldownUntil = Date.now() + 10000; }
+        return null;
+      }
       log("telegram_error", `${method} ${res.status}: ${err.slice(0, 200)}`);
       return null;
     }
@@ -183,7 +208,7 @@ function createTypingIndicator() {
     await postTelegram("sendChatAction", { action: "typing" });
     timer = setTimeout(() => {
       tick().catch(() => null);
-    }, 4000);
+    }, 15000);
   }
 
   tick().catch(() => null);

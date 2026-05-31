@@ -140,6 +140,14 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 5 — Paper Trading → Full Learning Pipeline
+
+- [x] Paper close → `recordPerformance()` → creates lessons.json + pool-memory.json (same as real close)
+- [x] Paper close PnL <= -30% → auto-blacklist token (token-blacklist.json created)
+- [x] Morning briefing include paper trading data (open positions + closed stats)
+- [x] `paperClose()` dan `paperCheckExits()` jadi async (await recordPerformance)
+- [x] All 3 learning systems now work in dry run: lessons, pool-memory, blacklist
+
 ### Session 4 — Dual-side Strict, Portfolio Summary, evolveThresholds++ 
 
 - [x] Dual-side conditions diperketat: butuh SEMUA — full BULLISH + risk>=70 + vol<=2.0 + organic>=75. Default SINGLE-SIDE
@@ -193,3 +201,5 @@ Mode:       DRY RUN (paper trading)
 16. **Instant commands (read-only) SELALU taruh SEBELUM busy check.** Ga ada alasan /paper harus nunggu screening selesai
 17. **Dual-side memecoin = bahaya.** Data paper trade: single-side 5W/1L, dual-side 0W/4L. Default SINGLE-SIDE untuk memecoin
 18. **Selalu update MD file setelah selesai session** — jangan biarin ketinggalan
+19. **Paper trading HARUS trigger semua learning systems** — blacklist, lessons, pool-memory. Kalau ga, paper trading cuma cosmetic dan agent ga belajar apa-apa dari dry run
+20. **Async propagation** — kalau function jadi async, semua caller WAJIB di-await. Grep `functionName` di semua files untuk verify

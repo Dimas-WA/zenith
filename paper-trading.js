@@ -223,7 +223,7 @@ export async function paperUpdateAll({ fetchActiveBin, fetchPoolDetail, solPrice
 
 // ─── Close Virtual Position ──────────────────────────────────
 
-export function paperClose(positionId, { reason = "manual" } = {}) {
+export async function paperClose(positionId, { reason = "manual" } = {}) {
   const positions = loadPositions();
   const pos = positions.find(p => p.id === positionId && !p.closed);
   if (!pos) return null;
@@ -251,6 +251,53 @@ export function paperClose(positionId, { reason = "manual" } = {}) {
   savePositions(remaining);
 
   log("paper", `📝 VIRTUAL CLOSE: ${pos.pool_name} | PnL: ${pos.estimated_total_pnl_pct}% ($${pos.estimated_total_pnl_usd.toFixed(2)}) | Fees: $${pos.estimated_fees_earned_usd.toFixed(2)} | Hold: ${holdMinutes}m | Range: ${rangeEfficiency}% | Reason: ${reason}`);
+
+  // ─── Learning hooks (same as real close) ────────────────────
+  // 1. Record performance → creates lessons.json + pool-memory.json
+  try {
+    const { recordPerformance } = await import("./lessons.js");
+    const solPrice = pos.entry_sol_price || 82;
+    const deployedUsd = pos.amount_sol * solPrice;
+    await recordPerformance({
+      pool: pos.pool_address,
+      pool_name: pos.pool_name,
+      base_mint: pos.base_mint,
+      amount_sol: pos.amount_sol,
+      initial_value_usd: deployedUsd,
+      final_value_usd: deployedUsd + pos.estimated_total_pnl_usd - pos.estimated_fees_earned_usd,
+      fees_earned_usd: pos.estimated_fees_earned_usd,
+      fees_earned_sol: pos.estimated_fees_earned_sol,
+      minutes_held: holdMinutes,
+      minutes_in_range: pos.total_minutes_in_range,
+      close_reason: reason,
+      strategy: pos.strategy,
+      volatility: pos.volatility,
+      fee_tvl_ratio: pos.fee_tvl_ratio_at_entry,
+      organic_score: pos.organic_score,
+      risk_score: pos.risk_score,
+      deployed_at: pos.deployed_at,
+      deploy_mode: pos.deploy_mode || "single-side-SOL",
+      paper_trade: true,
+    });
+  } catch (e) {
+    log("paper_warn", `Lesson record failed: ${e.message}`);
+  }
+
+  // 2. Auto-blacklist rugged tokens (PnL <= -30%)
+  if (pos.estimated_total_pnl_pct <= -30 && pos.base_mint) {
+    try {
+      const { addToBlacklist } = await import("./token-blacklist.js");
+      addToBlacklist({
+        mint: pos.base_mint,
+        symbol: pos.pool_name?.split("-")[0] || pos.base_mint.slice(0, 8),
+        reason: `Paper trade auto-blacklist: ${pos.estimated_total_pnl_pct.toFixed(1)}% loss (${reason})`,
+      });
+      log("blacklist", `Paper auto-blacklisted ${pos.pool_name} — PnL ${pos.estimated_total_pnl_pct.toFixed(1)}%`);
+    } catch (e) {
+      log("paper_warn", `Paper blacklist failed: ${e.message}`);
+    }
+  }
+
   return historyEntry;
 }
 
@@ -258,7 +305,7 @@ export function paperClose(positionId, { reason = "manual" } = {}) {
  * Auto-close positions that hit stop loss, take profit, or OOR limits.
  * Safety: requires minimum hold time AND minimum updates before auto-closing.
  */
-export function paperCheckExits(config) {
+export async function paperCheckExits(config) {
   const positions = loadPositions();
   const open = positions.filter(p => !p.closed);
   const closed = [];
@@ -272,21 +319,21 @@ export function paperCheckExits(config) {
 
     // Stop loss
     if (pos.estimated_total_pnl_pct <= (config?.stopLossPct ?? -20)) {
-      const result = paperClose(pos.id, { reason: `stop loss (${pos.estimated_total_pnl_pct}%)` });
+      const result = await paperClose(pos.id, { reason: `stop loss (${pos.estimated_total_pnl_pct}%)` });
       if (result) closed.push(result);
       continue;
     }
 
     // Take profit
     if (pos.estimated_total_pnl_pct >= (config?.takeProfitPct ?? 8)) {
-      const result = paperClose(pos.id, { reason: `take profit (${pos.estimated_total_pnl_pct}%)` });
+      const result = await paperClose(pos.id, { reason: `take profit (${pos.estimated_total_pnl_pct}%)` });
       if (result) closed.push(result);
       continue;
     }
 
     // OOR too long
     if (pos.minutes_out_of_range >= (config?.outOfRangeWaitMinutes ?? 15)) {
-      const result = paperClose(pos.id, { reason: `OOR ${pos.minutes_out_of_range}m` });
+      const result = await paperClose(pos.id, { reason: `OOR ${pos.minutes_out_of_range}m` });
       if (result) closed.push(result);
       continue;
     }

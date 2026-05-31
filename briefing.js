@@ -54,8 +54,37 @@ export async function generateBriefing() {
     perfSummary
       ? `📊 All-time PnL: $${perfSummary.total_pnl_usd.toFixed(2)} (${perfSummary.win_rate_pct}% win)`
       : "",
-    "────────────────"
   ];
+
+  // Paper trading section
+  try {
+    const { paperGetPositions, paperGetPerformance } = await import("./paper-trading.js");
+    const paperPos = paperGetPositions();
+    const paperPerf = paperGetPerformance();
+
+    if (paperPos.total_positions > 0 || paperPerf.total_trades > 0) {
+      lines.push("", `<b>📝 Paper Trading:</b>`);
+
+      if (paperPos.total_positions > 0) {
+        const totalSol = paperPos.positions.reduce((s, p) => s + p.amount_sol, 0);
+        const totalPnl = paperPos.positions.reduce((s, p) => s + p.total_pnl_usd, 0);
+        const totalFees = paperPos.positions.reduce((s, p) => s + p.fees_earned_usd, 0);
+        lines.push(`📂 Open: ${paperPos.total_positions} virtual position(s) | ${totalSol.toFixed(2)} SOL`);
+        lines.push(`💰 Unrealized PnL: $${totalPnl.toFixed(2)} | Fees: $${totalFees.toFixed(2)}`);
+        for (const p of paperPos.positions) {
+          const icon = p.total_pnl_pct >= 0 ? "📈" : "📉";
+          lines.push(`  ${icon} ${p.pool}: ${p.total_pnl_pct}% ($${p.total_pnl_usd.toFixed(2)})`);
+        }
+      }
+
+      if (paperPerf.total_trades > 0) {
+        lines.push(`📊 Closed: ${paperPerf.total_trades} trades | Win: ${paperPerf.wins}/${paperPerf.total_trades} (${paperPerf.win_rate}%)`);
+        lines.push(`💰 Realized PnL: $${paperPerf.total_pnl_usd} | Fees: $${paperPerf.total_fees_usd}`);
+      }
+    }
+  } catch { /* paper trading not available */ }
+
+  lines.push("────────────────");
 
   return lines.join("\n");
 }
