@@ -475,15 +475,15 @@ export async function runScreeningCycle({ silent = false } = {}) {
   let screenReport = null;
   try {
     [prePositions, preBalance] = await Promise.all([getMyPositions({ force: true }), getWalletBalances()]);
-    if (prePositions.total_positions >= config.risk.maxPositions) {
-      log("cron", `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`);
-      screenReport = `Screening skipped — max positions reached (${prePositions.total_positions}/${config.risk.maxPositions}).`;
-      appendDecision({
-        type: "skip",
-        actor: "SCREENER",
-        summary: "Screening skipped",
-        reason: `Max positions reached (${prePositions.total_positions}/${config.risk.maxPositions})`,
-      });
+    // In dry run, count paper positions toward the limit
+    let paperCount = 0;
+    if (process.env.DRY_RUN === "true") {
+      try { paperCount = paperGetPositions().total_positions; } catch { /* ignore */ }
+    }
+    const effectivePositions = prePositions.total_positions + paperCount;
+    if (effectivePositions >= config.risk.maxPositions) {
+      log("cron", `Screening skipped — max positions reached (${effectivePositions}/${config.risk.maxPositions}${paperCount > 0 ? `, ${paperCount} paper` : ""})`);
+      screenReport = null; // silent — no Telegram spam when full
       _screeningBusy = false;
       return screenReport;
     }
