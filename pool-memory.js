@@ -228,23 +228,36 @@ export function recordPoolDeploy(poolAddress, deployData) {
   log("pool-memory", `Recorded deploy for ${entry.name} (${poolAddress.slice(0, 8)}): PnL ${deploy.pnl_pct}%`);
 }
 
+// Computes whether an entry's LAST deploy was a loss still within the cooldown window.
+// Works retroactively even for entries recorded before cooldown_until existed.
+function recentLossActive(entry) {
+  if (!entry || entry.last_outcome !== "loss") return false;
+  const lossHours = Math.max(6, Number(config.management.repeatDeployCooldownHours ?? 12));
+  const last = entry.deploys?.[entry.deploys.length - 1];
+  const closedAt = last?.closed_at || entry.last_deployed_at;
+  if (!closedAt) return false;
+  const ageMs = Date.now() - new Date(closedAt).getTime();
+  return ageMs < lossHours * 3_600_000;
+}
+
 export function isPoolOnCooldown(poolAddress) {
   if (!poolAddress) return false;
   const db = load();
   const entry = db[poolAddress];
-  if (!entry?.cooldown_until) return false;
-  return new Date(entry.cooldown_until) > new Date();
+  if (!entry) return false;
+  if (entry.cooldown_until && new Date(entry.cooldown_until) > new Date()) return true;
+  return recentLossActive(entry); // retroactive: recent loss = cooldown
 }
 
 export function isBaseMintOnCooldown(baseMint) {
   if (!baseMint) return false;
   const db = load();
   const now = new Date();
-  return Object.values(db).some((entry) =>
-    entry?.base_mint === baseMint &&
-    entry?.base_mint_cooldown_until &&
-    new Date(entry.base_mint_cooldown_until) > now
-  );
+  return Object.values(db).some((entry) => {
+    if (entry?.base_mint !== baseMint) return false;
+    if (entry?.base_mint_cooldown_until && new Date(entry.base_mint_cooldown_until) > now) return true;
+    return recentLossActive(entry); // retroactive: recent loss on this token = cooldown
+  });
 }
 
 // ─── Read ──────────────────────────────────────────────────────

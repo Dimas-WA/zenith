@@ -140,6 +140,13 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 18 — Retroactive Loss Cooldown (DATBIHGAH bulletproof)
+
+- [x] AKAR: cooldown_until cuma ke-set buat close BARU. Entry DATBIHGAH lama (loss sebelum fix) ga punya cooldown_until → lolos filter
+- [x] FIX: isPoolOnCooldown + isBaseMintOnCooldown sekarang hitung dari HISTORY (last_outcome=loss + dalam window) — RETROAKTIF, ga butuh cooldown_until pre-set
+- [x] recentLossActive(): last deploy loss + age < repeatDeployCooldownHours → cooldown aktif
+- [x] WAJIB: VPS git pull + pm2 restart — kalau ga restart, agent lama tetap pakai logika lama
+
 ### Session 17 — Fix screening.js paper-aware (token burn root cause)
 
 - [x] ROOT CAUSE token burn: screening.js getTopCandidates occupiedPools/occupiedMints pakai REAL positions (0 di dry run) → paper positions ga ke-exclude → DATBIHGAH lolos ke LLM tiap cycle
