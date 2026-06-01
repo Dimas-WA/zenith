@@ -140,6 +140,14 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 12 — Fix Helius 429 Fallthrough + Matikan chartIndicators Lama
+
+- [x] DIAGNOSIS: Helius 429 masih muncul — getWalletBalances cek HELIUS_KEY dulu (RPC_URL ga ngaruh ke balance)
+- [x] FIX: Helius 429/error → fall through ke getWalletBalancesViaRpc (standard RPC), bukan cuma simulate
+- [x] FIX: timeframe 15m bug (Meteora ga support — ERR). Ganti 1h. Supertrend 15m tetap di supertrendTimeframe
+- [x] FIX: chartIndicators.enabled=false di bengbeng (Agent Meridian API 401/504, butuh key). Pakai requireBullishSupertrend (GeckoTerminal gratis)
+- [x] CATATAN: solusi paling bersih = HAPUS HELIUS_API_KEY dari .env → langsung pakai RPC fallback
+
 ### Session 11 — Self-Contained Supertrend (GeckoTerminal, No Key)
 
 - [x] FOUND: chart-indicators.js udah ada supertrend TAPI butuh Agent Meridian API key (401, ga punya)

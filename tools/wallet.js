@@ -166,7 +166,9 @@ export async function getWalletBalances() {
     const res = await fetch(url);
     
     if (!res.ok) {
-      throw new Error(`Helius API error: ${res.status} ${res.statusText}`);
+      // Helius failed (429 rate limit / exhausted) — fall back to standard RPC
+      log("wallet_warn", `Helius ${res.status} — falling back to standard RPC`);
+      return await getWalletBalancesViaRpc(walletAddress);
     }
 
     const data = await res.json();
@@ -234,7 +236,12 @@ export async function getWalletBalances() {
 
     return result;
   } catch (error) {
-    log("wallet_error", error.message);
+    // Helius path threw (network/parse) — fall back to standard RPC
+    log("wallet_warn", `Helius error (${error.message}) — falling back to standard RPC`);
+    try {
+      return await getWalletBalancesViaRpc(walletAddress);
+    } catch { /* RPC also failed — use simulated below */ }
+
     const fallback = {
       wallet: walletAddress,
       sol: 0,
