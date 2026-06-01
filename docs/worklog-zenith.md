@@ -140,6 +140,15 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 9 — maxVolatility Filter + RPC Retry/Backoff
+
+- [x] maxVolatility WIRED ke screening filter (sebelumnya config no-op — gua lupa wire)
+- [x] config.js + executor CONFIG_MAP support maxVolatility
+- [x] rpc-fetch.js: custom fetch dengan retry+backoff (0.8s→6.4s) untuk 429/503
+- [x] Pasang rpcFetch ke Connection di dlmm.js + wallet.js — sekali pasang, semua RPC call kebackup
+- [x] Respect Retry-After header dari RPC
+- [x] DIAGNOSIS: skip semua BUKAN karena config — tapi (1) RPC 429 PublicNode (2) market bearish
+
 ### Session 8 — RPC Fallback (No Helius Needed) + Paper Close All
 
 - [x] wallet.js fallback: standard RPC getBalance + Jupiter price (ganti Helius DAS API)
@@ -230,6 +239,8 @@ Mode:       DRY RUN (paper trading)
 19. **Paper trading HARUS trigger semua learning systems**
 20. **Paper budget harus realistic**
 21. **Setiap destructive action wajib: backup dulu, konfirmasi dulu.** paperreset, data penting lainnya — jangan langsung hapus tanpa safety net
-22. **paper-history.json adalah raw data, bukan satu-satunya learning.** Yang penting adalah lessons.json, pool-memory.json, signal-weights.json — ini yang dipakai AI tiap cycle — budget berkurang saat deploy, bertambah saat profit, berkurang saat loss. Kalau tidak, agent bisa deploy unlimited dan paper trade jadi tidak bermakna
+22. **paper-history.json adalah raw data, bukan satu-satunya learning.** Yang penting adalah lessons.json, pool-memory.json, signal-weights.json — ini yang dipakai AI tiap cycle
+23. **Kalau nyaranin config baru, WAJIB wire kodenya juga.** maxVolatility ditambahin ke config tapi ga ada code yang baca = no-op. Selalu grep dulu apakah key-nya beneran dipake
+24. **Public RPC gratis = rate limit ketat.** Wajib ada retry+backoff. Pasang custom fetch ke Connection (1 tempat, cover semua call) — budget berkurang saat deploy, bertambah saat profit, berkurang saat loss. Kalau tidak, agent bisa deploy unlimited dan paper trade jadi tidak bermakna
 21. **Telegram sendChatAction jangan di-loop cepat** — 4s interval terlalu cepat. Minimal 15s. Dan selalu respect 429 retry_after — blacklist, lessons, pool-memory. Kalau ga, paper trading cuma cosmetic dan agent ga belajar apa-apa dari dry run
 20. **Async propagation** — kalau function jadi async, semua caller WAJIB di-await. Grep `functionName` di semua files untuk verify

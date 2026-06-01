@@ -586,6 +586,16 @@ export async function runScreeningCycle({ silent = false } = {}) {
           return false;
         }
       }
+      // Volatility cap: skip pools above maxVolatility (high vol = IL death trap)
+      const maxVolatility = config.screening.maxVolatility;
+      if (maxVolatility != null) {
+        const vol = Number(pool.volatility ?? 0);
+        if (vol > maxVolatility) {
+          log("screening", `Volatility filter: dropped ${pool.name} — volatility ${vol.toFixed(2)} > ${maxVolatility}`);
+          filteredOut.push({ name: pool.name, reason: `volatility ${vol.toFixed(2)} > ${maxVolatility}` });
+          return false;
+        }
+      }
       return true;
     });
 

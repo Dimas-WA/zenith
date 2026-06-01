@@ -83,6 +83,7 @@ export const config = {
     maxBundlePct:      u.maxBundlePct      ?? 30,  // max bundle holding % (OKX advanced-info)
     maxBotHoldersPct:  u.maxBotHoldersPct  ?? 30,  // max bot holder addresses % (Jupiter audit)
     maxInsiderPct:     u.maxInsiderPct     ?? null, // max insider % (dev_holding + suspicious). null = no filter. EvilPanda: 10
+    maxVolatility:     u.maxVolatility     ?? null, // skip pools above this volatility (high vol = IL risk). null = no cap
     maxTop10Pct:       u.maxTop10Pct       ?? 60,  // max top 10 holders concentration
     allowedLaunchpads: u.allowedLaunchpads ?? [],  // allow-list launchpads, [] = no allow-list
     blockedLaunchpads:  u.blockedLaunchpads  ?? [],  // e.g. ["letsbonk.fun", "pump.fun"]

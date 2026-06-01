@@ -401,6 +401,7 @@ const toolMap = {
       maxBundlePct:     ["screening", "maxBundlePct"],
       maxBotHoldersPct: ["screening", "maxBotHoldersPct"],
       maxInsiderPct: ["screening", "maxInsiderPct"],
+      maxVolatility: ["screening", "maxVolatility"],
       maxTop10Pct: ["screening", "maxTop10Pct"],
       allowedLaunchpads: ["screening", "allowedLaunchpads"],
       blockedLaunchpads: ["screening", "blockedLaunchpads"],
