@@ -140,6 +140,15 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 15 — Combine Hybrid+bengbeng + Fix Token Burn (Loss Cooldown)
+
+- [x] user-config.json = KOMBINASI hybrid (wider filters, banyak kandidat) + bengbeng (supertrend gate, age 120h)
+- [x] BUG TOKEN BURN: stop-loss TIDAK trigger cooldown → pool yang baru rugi lolos filter → di-LLM tiap cycle → reject → buang token
+- [x] FIX: pool-memory set cooldown setelah stop-loss / loss <= -8% (anti-revenge + hemat token)
+- [x] Pool yang baru rugi sekarang ke-filter SEBELUM LLM (ga buang token re-evaluasi)
+- [x] screeningIntervalMin 12→25 (hemat token, market sepi ga perlu sering)
+- [x] deployMode "auto" (AI decide), maxTokenAgeHours 120 (longgar dari 48), mcap 200k
+
 ### Session 14 — Fix Duplicate Paper Deploy + False DEPLOYED
 
 - [x] BUG: executor cek duplicate pool pakai real positions (0 di dry run) → ga liat paper → deploy ulang pool sama tiap cycle

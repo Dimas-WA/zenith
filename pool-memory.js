@@ -168,6 +168,19 @@ export function recordPoolDeploy(poolAddress, deployData) {
     log("pool-memory", `Cooldown set for ${entry.name} until ${cooldownUntil} (low yield close)`);
   }
 
+  // Set cooldown after a stop-loss / heavy loss — anti-revenge + saves LLM tokens
+  // (prevents re-evaluating a just-lost pool every screening cycle)
+  const closeReasonLc = String(deploy.close_reason || "").toLowerCase();
+  const isLossClose = closeReasonLc.includes("stop loss") || (deploy.pnl_pct != null && deploy.pnl_pct <= -8);
+  if (isLossClose) {
+    const lossCooldownHours = Math.max(6, Number(config.management.repeatDeployCooldownHours ?? 12));
+    const reason = `loss close (${deploy.pnl_pct?.toFixed(1)}%)`;
+    const poolCd = setPoolCooldown(entry, lossCooldownHours, reason);
+    const mintCd = entry.base_mint ? setBaseMintCooldown(db, entry.base_mint, lossCooldownHours, reason) : null;
+    log("pool-memory", `Loss cooldown set for ${entry.name} until ${poolCd} (${reason})`);
+    if (mintCd) log("pool-memory", `Token loss cooldown set for ${entry.base_mint.slice(0, 8)} until ${mintCd}`);
+  }
+
   const oorTriggerCount = config.management.oorCooldownTriggerCount ?? 3;
   const oorCooldownHours = config.management.oorCooldownHours ?? 12;
   const recentDeploys = entry.deploys.slice(-oorTriggerCount);
