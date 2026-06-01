@@ -428,6 +428,7 @@ const BOT_COMMANDS = [
   { command: "candidates", description: "Show latest cached candidates" },
   { command: "paper",      description: "Show virtual paper trading positions" },
   { command: "performance", description: "Paper trading history & win rate" },
+  { command: "papercloseall", description: "Close all open paper positions" },
   { command: "paperreset", description: "Clear all paper trading data" },
   { command: "deploy",     description: "Deploy candidate by cached index" },
   { command: "briefing",   description: "Morning briefing" },

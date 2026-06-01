@@ -1557,6 +1557,13 @@ async function telegramHandler(msg) {
     await sendMessage(paperFormatPerformance()).catch(() => {});
     return;
   }
+  if (text === "/papercloseall") {
+    const { paperCloseAll } = await import("./paper-trading.js");
+    const result = await paperCloseAll({ reason: "Telegram /papercloseall" });
+    await sendMessage(`📝 ${result.message}\n${result.details?.join("\n") || ""}\nTotal PnL: $${result.total_pnl_usd}`).catch(() => {});
+    return;
+  }
+
   if (text === "/paperreset") {
     // Ask for confirmation — prevent accidental reset
     await sendMessageWithButtons(
@@ -2083,6 +2090,14 @@ Commands:
 
     if (input === "/performance") {
       console.log(`\n${paperFormatPerformance()}\n`);
+      rl.prompt();
+      return;
+    }
+
+    if (input === "/papercloseall") {
+      const { paperCloseAll } = await import("./paper-trading.js");
+      const result = await paperCloseAll({ reason: "REPL /papercloseall" });
+      console.log(`\n📝 ${result.message}\n${result.details?.join("\n") || ""}\nTotal PnL: $${result.total_pnl_usd}\n`);
       rl.prompt();
       return;
     }

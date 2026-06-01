@@ -478,6 +478,27 @@ export function paperFormatPerformance() {
   return lines.join("\n");
 }
 
+/**
+ * Close all open paper positions immediately.
+ */
+export async function paperCloseAll({ reason = "manual close all" } = {}) {
+  const positions = loadPositions().filter(p => !p.closed);
+  if (positions.length === 0) return { closed: 0, message: "No open paper positions." };
+
+  const results = [];
+  for (const pos of positions) {
+    const result = await paperClose(pos.id, { reason });
+    if (result) results.push(result);
+  }
+
+  return {
+    closed: results.length,
+    total_pnl_usd: Number(results.reduce((s, r) => s + (r.estimated_total_pnl_usd || 0), 0).toFixed(2)),
+    message: `Closed ${results.length} paper position(s).`,
+    details: results.map(r => `${r.pool_name}: ${r.estimated_total_pnl_pct}% ($${r.estimated_total_pnl_usd.toFixed(2)})`),
+  };
+}
+
 export function paperReset() {
   // Auto-backup before clearing — timestamped so multiple backups don't overwrite
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
