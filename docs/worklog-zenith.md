@@ -140,6 +140,14 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 16 — Alignment Gate + Single-Side (DATBIHGAH lesson)
+
+- [x] DATBIHGAH loss -12.9%: masuk pas sinyal KONFLIK (supertrend bullish TAPI mtf leaning_bearish) + dual-side amplify IL
+- [x] FIX A — ALIGNMENT GATE: deploy HANYA kalau supertrend bullish DAN mtf NOT bearish. Konflik = SKIP
+- [x] Step 2 sekarang skip LEANING_BEARISH juga (bukan cuma REJECTED)
+- [x] FIX C — deployMode "single": dump ga bikin IL 2 sisi
+- [x] CATATAN: bengbeng exit asli BUKAN % stop, tapi "breakdown + OOR". Zenith ga bisa replikasi entry-on-retrace + breakdown judgment (diskresioner). n=1 belum meaningful
+
 ### Session 15 — Combine Hybrid+bengbeng + Fix Token Burn (Loss Cooldown)
 
 - [x] user-config.json = KOMBINASI hybrid (wider filters, banyak kandidat) + bengbeng (supertrend gate, age 120h)

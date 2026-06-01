@@ -758,8 +758,10 @@ ${candidateBlocks.join("\n\n")}
 
 STEPS:
 1. Decide if any candidate is actually worth deploying. SKIP candidates with risk_score < 35.
-2. Check mtf_momentum: SKIP candidates with mtf_momentum=REJECTED. Prefer BULLISH but MIXED is still deployable.${stEnabled ? `
-2b. SUPERTREND GATE: SKIP candidates where supertrend_15m is BEARISH or price BELOW line. Only deploy on BULLISH supertrend with price ABOVE line (bengbeng rule).` : ""}
+2. Check mtf_momentum: SKIP candidates with mtf_momentum=REJECTED, BEARISH, or LEANING_BEARISH. Only BULLISH/LEANING_BULLISH/MIXED is deployable.${stEnabled ? `
+2b. SUPERTREND GATE: SKIP candidates where supertrend_15m is BEARISH or price BELOW line.
+2c. ALIGNMENT RULE (CRITICAL): Only deploy when BOTH align — supertrend BULLISH (price ABOVE line) AND mtf_momentum NOT bearish. If supertrend bullish but momentum bearish (or vice versa) → SIGNAL CONFLICT → SKIP. Never let one signal override the other. This prevents entering during a dump.` : `
+2b. ALIGNMENT: Only deploy when mtf_momentum is BULLISH or LEANING_BULLISH. SKIP anything bearish-leaning.`}
 3. Pick the best candidate (highest risk_score + best momentum + good narrative/smart wallets).
 4. DEPLOY AMOUNT: always use ${baseDeployAmount} SOL as amount_y. Cap at ${config.risk.maxDeployAmount} SOL.
 5. DEPLOY MODE — ${config.strategy.deployMode === "dual"
