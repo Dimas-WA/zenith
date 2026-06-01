@@ -144,6 +144,44 @@ async function getWalletBalancesViaRpc(walletAddress) {
 }
 
 /**
+ * Dry-run simulated balance — NO network/RPC call for balance.
+ * Only fetches SOL price from Jupiter (cheap, no RPC). Avoids RPC rate limits.
+ */
+async function getSimulatedDryRunBalance(walletAddress) {
+  let solPrice = 82;
+  try {
+    const priceRes = await fetch(`${JUPITER_PRICE_API}?ids=${config.tokens.SOL}`);
+    if (priceRes.ok) {
+      const d = await priceRes.json();
+      solPrice = Number(d?.[config.tokens.SOL]?.usdPrice ?? d?.data?.[config.tokens.SOL]?.price ?? 82) || 82;
+    }
+  } catch { /* use default */ }
+
+  const PAPER_BUDGET = config.management.paperBudgetSol ?? 5.0;
+  let deployed = 0, pnlSol = 0;
+  try {
+    const { paperGetPositions, paperGetPerformance } = await import("../paper-trading.js");
+    deployed = paperGetPositions().positions.reduce((s, p) => s + (p.amount_sol || 0), 0);
+    const perf = paperGetPerformance();
+    if (perf.total_trades > 0) pnlSol = (perf.total_pnl_usd || 0) / solPrice;
+  } catch { /* ignore */ }
+
+  const available = Math.max(0.2, PAPER_BUDGET + pnlSol - deployed);
+  return {
+    wallet: walletAddress,
+    sol: Math.round(available * 1e6) / 1e6,
+    sol_price: Math.round(solPrice * 100) / 100,
+    sol_usd: Math.round(available * solPrice * 100) / 100,
+    usdc: 0,
+    tokens: [],
+    total_usd: Math.round(available * solPrice * 100) / 100,
+    _simulated: true,
+    _paper_budget: PAPER_BUDGET,
+    _paper_deployed: Math.round(deployed * 1e4) / 1e4,
+  };
+}
+
+/**
  * Get current wallet balances: SOL, USDC, and all SPL tokens using Helius Wallet API.
  * Returns USD-denominated values provided by Helius.
  */
@@ -152,7 +190,13 @@ export async function getWalletBalances() {
   try {
     walletAddress = getWallet().publicKey.toString();
   } catch {
+    if (process.env.DRY_RUN === "true") return await getSimulatedDryRunBalance("simulated-wallet");
     return { wallet: null, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: "Wallet not configured" };
+  }
+
+  // DRY RUN: skip ALL balance RPC/Helius calls — return simulated directly (no rate limits)
+  if (process.env.DRY_RUN === "true") {
+    return await getSimulatedDryRunBalance(walletAddress);
   }
 
   const HELIUS_KEY = process.env.HELIUS_API_KEY;

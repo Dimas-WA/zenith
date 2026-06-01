@@ -140,6 +140,15 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 13 — Dry Run Skip Balance RPC + .env VPS issue
+
+- [x] DIAGNOSIS: error "-32429 max usage reached" = format Helius → RPC_URL VPS MASIH Helius (belum keganti)
+- [x] KEY INSIGHT: .env di-gitignore → git push TIDAK bawa .env. VPS .env HARUS diedit manual
+- [x] FIX: dry run getWalletBalances SHORT-CIRCUIT — langsung simulasi, ZERO RPC call buat balance
+- [x] SOL price tetap akurat via Jupiter (cheap, no RPC)
+- [x] RPC sekarang cuma dipakai getActiveBin (deploy bin calc) — jauh lebih sedikit call
+- [x] CATATAN: VPS wajib set RPC_URL=https://solana-rpc.publicnode.com di .env (bukan dari git)
+
 ### Session 12 — Fix Helius 429 Fallthrough + Matikan chartIndicators Lama
 
 - [x] DIAGNOSIS: Helius 429 masih muncul — getWalletBalances cek HELIUS_KEY dulu (RPC_URL ga ngaruh ke balance)
