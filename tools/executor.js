@@ -856,13 +856,14 @@ async function runSafetyChecks(name, args) {
 
       // Check position count limit + duplicate pool guard — force fresh scan to avoid stale cache
       const positions = await getMyPositions({ force: true });
-      // In dry run, also count paper positions toward the limit
+      // In dry run, also include paper positions for limit + duplicate checks
+      let paperPositions = [];
       let effectivePositionCount = positions.total_positions;
       if (process.env.DRY_RUN === "true") {
         try {
           const { paperGetPositions } = await import("../paper-trading.js");
-          const paperPos = paperGetPositions();
-          effectivePositionCount += paperPos.total_positions;
+          paperPositions = paperGetPositions().positions || [];
+          effectivePositionCount += paperPositions.length;
         } catch { /* ignore */ }
       }
       if (effectivePositionCount >= config.risk.maxPositions) {
@@ -871,25 +872,23 @@ async function runSafetyChecks(name, args) {
           reason: `Max positions (${config.risk.maxPositions}) reached (${effectivePositionCount} open including paper). Close a position first.`,
         };
       }
-      const alreadyInPool = positions.positions.some(
-        (p) => p.pool === args.pool_address
-      );
+      const alreadyInPool = positions.positions.some((p) => p.pool === args.pool_address)
+        || paperPositions.some((p) => p.pool_address === args.pool_address);
       if (alreadyInPool) {
         return {
           pass: false,
-          reason: `Already have an open position in pool ${args.pool_address}. Cannot open duplicate.`,
+          reason: `Already have an open position in pool ${args.pool_address} (including paper). Cannot open duplicate.`,
         };
       }
 
       // Block same base token across different pools
       if (args.base_mint) {
-        const alreadyHasMint = positions.positions.some(
-          (p) => p.base_mint === args.base_mint
-        );
+        const alreadyHasMint = positions.positions.some((p) => p.base_mint === args.base_mint)
+          || paperPositions.some((p) => p.base_mint === args.base_mint);
         if (alreadyHasMint) {
           return {
             pass: false,
-            reason: `Already holding base token ${args.base_mint} in another pool. One position per token only.`,
+            reason: `Already holding base token ${args.base_mint} in another pool (including paper). One position per token only.`,
           };
         }
       }

@@ -140,6 +140,15 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 14 — Fix Duplicate Paper Deploy + False DEPLOYED
+
+- [x] BUG: executor cek duplicate pool pakai real positions (0 di dry run) → ga liat paper → deploy ulang pool sama tiap cycle
+- [x] FIX: executor duplicate pool + base_mint check sekarang include paper positions (dry run)
+- [x] BUG: dlmm.js return "success" walau paperDeploy null (duplikat) → LLM lapor DEPLOYED palsu
+- [x] FIX: dlmm.js return success:false kalau paperDeploy null → LLM lapor NO DEPLOY jujur
+- [x] paperGetPositions tambah base_mint (buat duplicate-by-token check)
+- [x] CATATAN: "no tool call" rejection = flakiness mimo-v2.5-pro (bukan bug kode), MTF udah REJECTED jadi emang ga ada deploy
+
 ### Session 13 — Dry Run Skip Balance RPC + .env VPS issue
 
 - [x] DIAGNOSIS: error "-32429 max usage reached" = format Helius → RPC_URL VPS MASIH Helius (belum keganti)

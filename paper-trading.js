@@ -356,6 +356,7 @@ export function paperGetPositions() {
         id: p.id,
         pool: p.pool_name,
         pool_address: p.pool_address,
+        base_mint: p.base_mint,
         amount_sol: p.amount_sol,
         strategy: p.strategy,
         entry_bin: p.entry_active_bin,

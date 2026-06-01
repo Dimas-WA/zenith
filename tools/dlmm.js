@@ -581,10 +581,11 @@ export async function deployPosition({
 
   if (process.env.DRY_RUN === "true") {
     // Paper trading — record virtual position
+    let paperResult = null;
     try {
       const { paperDeploy } = await import("../paper-trading.js");
       const activePrice = Number((await getDLMM()).getPriceOfBinByBinId(activeBin.binId, actualBinStep).toString());
-      paperDeploy({
+      paperResult = paperDeploy({
         pool_address,
         pool_name,
         base_mint: pool.lbPair.tokenXMint.toString(),
@@ -603,6 +604,16 @@ export async function deployPosition({
       });
     } catch (e) {
       log("paper_warn", `Paper deploy failed: ${e.message}`);
+    }
+
+    // paperDeploy returns null if duplicate pool — report honestly, don't fake success
+    if (!paperResult) {
+      return {
+        dry_run: true,
+        paper_trading: true,
+        success: false,
+        error: `Already have an open paper position in ${pool_name || pool_address.slice(0, 8)}. Cannot open duplicate. Report NO DEPLOY.`,
+      };
     }
 
     return {
