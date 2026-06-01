@@ -36,6 +36,7 @@ import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnable
 import { appendDecision } from "./decision-log.js";
 import { checkAllPositionWhales, pruneSnapshots } from "./whale-tracker.js";
 import { checkMultiTimeframeMomentum, formatMtfResult } from "./multi-timeframe.js";
+import { getSupertrend } from "./supertrend.js";
 import { assessMevRisk, getRecommendedPriorityFee } from "./mev-protection.js";
 import { paperUpdateAll, paperCheckExits, paperFormatStatus, paperFormatPerformance, paperGetPositions } from "./paper-trading.js";
 
@@ -647,14 +648,22 @@ export async function runScreeningCycle({ silent = false } = {}) {
       }
     }
 
-    // Pre-fetch active_bin + multi-timeframe momentum for all passing candidates
-    const [activeBinResults, mtfResults] = await Promise.all([
+    // Pre-fetch active_bin + multi-timeframe momentum + supertrend for all passing candidates
+    const stEnabled = config.screening.requireBullishSupertrend === true;
+    const [activeBinResults, mtfResults, supertrendResults] = await Promise.all([
       Promise.allSettled(
         passing.map(({ pool }) => getActiveBin({ pool_address: pool.pool }))
       ),
       Promise.allSettled(
         passing.slice(0, 5).map(({ pool }) =>
           checkMultiTimeframeMomentum(pool.pool, pool.name).catch(() => null)
+        )
+      ),
+      Promise.allSettled(
+        passing.slice(0, 5).map(({ pool }) =>
+          stEnabled
+            ? getSupertrend(pool.pool, { timeframe: config.screening.supertrendTimeframe || "15m" }).catch(() => null)
+            : Promise.resolve(null)
         )
       ),
     ]);
@@ -669,6 +678,8 @@ export async function runScreeningCycle({ silent = false } = {}) {
       const netBuyers = ti?.stats_1h?.net_buyers;
       const activeBin = activeBinResults[i]?.status === "fulfilled" ? activeBinResults[i].value?.binId : null;
       const mtf = i < 5 && mtfResults[i]?.status === "fulfilled" ? mtfResults[i].value : null;
+      const supertrend = i < 5 && supertrendResults[i]?.status === "fulfilled" ? supertrendResults[i].value : null;
+      pool._supertrend = supertrend;
 
       // OKX signals
       const okxParts = [
@@ -711,6 +722,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
         n?.narrative ? `  narrative_untrusted: ${sanitizeUntrustedPromptText(n.narrative, 500)}` : `  narrative_untrusted: none`,
         mem ? `  memory_untrusted: ${sanitizeUntrustedPromptText(mem, 500)}` : null,
         mtf ? `  mtf_momentum: ${mtf.overall} (score ${mtf.score}, ${mtf.confirmed ? "CONFIRMED" : "REJECTED"}) — ${mtf.reason}` : null,
+        supertrend ? `  supertrend_15m: ${supertrend.direction.toUpperCase()} | price ${supertrend.price_above ? "ABOVE" : "BELOW"} line${supertrend.flipped ? " (just flipped)" : ""}` : null,
       ].filter(Boolean).join("\n");
 
       // Stage signals for Darwinian weighting — captured before LLM decides
@@ -746,21 +758,21 @@ ${candidateBlocks.join("\n\n")}
 
 STEPS:
 1. Decide if any candidate is actually worth deploying. SKIP candidates with risk_score < 35.
-2. Check mtf_momentum: SKIP candidates with mtf_momentum=REJECTED. Prefer BULLISH but MIXED is still deployable.
+2. Check mtf_momentum: SKIP candidates with mtf_momentum=REJECTED. Prefer BULLISH but MIXED is still deployable.${stEnabled ? `
+2b. SUPERTREND GATE: SKIP candidates where supertrend_15m is BEARISH or price BELOW line. Only deploy on BULLISH supertrend with price ABOVE line (bengbeng rule).` : ""}
 3. Pick the best candidate (highest risk_score + best momentum + good narrative/smart wallets).
 4. DEPLOY AMOUNT: always use ${baseDeployAmount} SOL as amount_y. Cap at ${config.risk.maxDeployAmount} SOL.
-5. DEPLOY MODE — DEFAULT IS SINGLE-SIDE SOL (safer for memecoin):
-   - SINGLE-SIDE (default): bins_above=0, amount_x=0. Use for ALL candidates UNLESS all 4 dual-side conditions are met.
-   - DUAL-SIDE (rare — ONLY when ALL conditions are true):
-     1. mtf_momentum = BULLISH (full BULLISH only, NOT leaning_bullish or mixed)
-     2. risk_score >= 70 (STRONG or LEGENDARY tier)
-     3. volatility <= 2.0 (low vol = less IL risk)
-     4. organic_score >= 75
-   If ANY condition fails → SINGLE-SIDE. When in doubt, ALWAYS SINGLE-SIDE.
-   Dual-side bins_above = bins_below (same formula). Keep amount_x=0.
+5. DEPLOY MODE — ${config.strategy.deployMode === "dual"
+    ? `FORCED DUAL-SIDE (config deployMode=dual): ALWAYS set bins_above = bins_below (symmetric). amount_x=0 (system handles). This is bengbeng Fast Bid-Ask style.`
+    : config.strategy.deployMode === "single"
+    ? `FORCED SINGLE-SIDE (config deployMode=single): ALWAYS bins_above=0, amount_x=0.`
+    : `AUTO (config deployMode=auto) — DEFAULT SINGLE-SIDE SOL:
+   - SINGLE-SIDE (default): bins_above=0, amount_x=0. Use UNLESS all 4 dual-side conditions met.
+   - DUAL-SIDE (rare — ONLY when ALL true): mtf_momentum=BULLISH + risk_score>=70 + volatility<=2.0 + organic>=75.
+   If ANY fails → SINGLE-SIDE. When in doubt, SINGLE-SIDE. Dual-side bins_above=bins_below, amount_x=0.`}
 6. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
    bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*(${config.strategy.maxBinsBelow - config.strategy.minBinsBelow})) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
-   bins_above = same formula IF dual-side mode, else 0.
+   bins_above = ${config.strategy.deployMode === "dual" ? "SAME as bins_below (symmetric dual-side)" : config.strategy.deployMode === "single" ? "0" : "same formula IF dual-side mode, else 0"}.
    pass deploy_position.volatility AND deploy_position.risk_score.
 7. Report in this exact format (no tables, no extra sections):
    🚀 DEPLOYED

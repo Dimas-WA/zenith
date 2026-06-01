@@ -140,6 +140,25 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 11 — Self-Contained Supertrend (GeckoTerminal, No Key)
+
+- [x] FOUND: chart-indicators.js udah ada supertrend TAPI butuh Agent Meridian API key (401, ga punya)
+- [x] BUILD supertrend.js self-contained: OHLCV dari GeckoTerminal (GRATIS, no key) + hitung ATR-based supertrend
+- [x] Wired ke screening: fetch supertrend top 5 candidates, inject ke candidate block, hard-gate di prompt
+- [x] Config: requireBullishSupertrend (bool) + supertrendTimeframe (15m default)
+- [x] bengbeng config pakai supertrend 15m gate (JANTUNG strategi)
+- [x] Tested: SPCX-SOL 15m → bullish, price above line ✓
+- [x] GeckoTerminal endpoint: api.geckoterminal.com/api/v2/networks/solana/pools/{addr}/ohlcv/minute?aggregate=15
+
+### Session 10 — bengbeng.fun Strategy + deployMode Config
+
+- [x] Bedah strategi "Fast Bid-Ask Bonus Stage" by @bengsharksol (83% WR, 100% excl old tokens)
+- [x] user-config-bengbengfun.json: dual-side bid-ask ±34 bins, token age <2 hari (KEY EDGE), TP 5-7%, 15m supertrend
+- [x] `deployMode` config WIRED: "auto"/"single"/"dual" — force deploy mode di screening prompt
+- [x] config.js strategy.deployMode + executor CONFIG_MAP + stringKeys
+- [x] Verified maxTokenAgeHours udah ke-wire di screening.js (EDGE bengbeng aman)
+- [x] Insight: dual-side memecoin AMAN kalau filter ketat (new ATH + <2hari + bullish supertrend + entry retrace)
+
 ### Session 9 — maxVolatility Filter + RPC Retry/Backoff
 
 - [x] maxVolatility WIRED ke screening filter (sebelumnya config no-op — gua lupa wire)

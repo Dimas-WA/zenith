@@ -84,6 +84,8 @@ export const config = {
     maxBotHoldersPct:  u.maxBotHoldersPct  ?? 30,  // max bot holder addresses % (Jupiter audit)
     maxInsiderPct:     u.maxInsiderPct     ?? null, // max insider % (dev_holding + suspicious). null = no filter. EvilPanda: 10
     maxVolatility:     u.maxVolatility     ?? null, // skip pools above this volatility (high vol = IL risk). null = no cap
+    requireBullishSupertrend: u.requireBullishSupertrend ?? false, // bengbeng-style: only deploy on bullish 15m supertrend (uses GeckoTerminal, no key)
+    supertrendTimeframe:      u.supertrendTimeframe      ?? "15m", // 5m / 15m / 1h / 4h
     maxTop10Pct:       u.maxTop10Pct       ?? 60,  // max top 10 holders concentration
     allowedLaunchpads: u.allowedLaunchpads ?? [],  // allow-list launchpads, [] = no allow-list
     blockedLaunchpads:  u.blockedLaunchpads  ?? [],  // e.g. ["letsbonk.fun", "pump.fun"]
@@ -130,6 +132,8 @@ export const config = {
     minBinsBelow: strategyMinBinsBelow,
     maxBinsBelow: strategyMaxBinsBelow,
     defaultBinsBelow: strategyDefaultBinsBelow,
+    // Deploy mode: "auto" (AI decides), "single" (force single-side SOL), "dual" (force symmetric dual-side)
+    deployMode:   u.deployMode   ?? "auto",
   },
 
   // ─── Scheduling ─────────────────────────
