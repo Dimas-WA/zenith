@@ -140,6 +140,13 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 17 — Fix screening.js paper-aware (token burn root cause)
+
+- [x] ROOT CAUSE token burn: screening.js getTopCandidates occupiedPools/occupiedMints pakai REAL positions (0 di dry run) → paper positions ga ke-exclude → DATBIHGAH lolos ke LLM tiap cycle
+- [x] FIX: dry run, occupiedPools+occupiedMints include paper positions → DATBIHGAH ke-filter SEBELUM LLM
+- [x] LESSON: paper positions sistem paralel. SEMUA "do I have this position" check WAJIB paper-aware di dry run
+- [x] Paper-aware spots (lengkap): executor maxPositions ✓, executor dup pool/mint ✓, index screening maxPositions ✓, screening.js occupiedPools ✓
+
 ### Session 16 — Alignment Gate + Single-Side (DATBIHGAH lesson)
 
 - [x] DATBIHGAH loss -12.9%: masuk pas sinyal KONFLIK (supertrend bullish TAPI mtf leaning_bearish) + dual-side amplify IL
@@ -303,6 +310,7 @@ Mode:       DRY RUN (paper trading)
 21. **Setiap destructive action wajib: backup dulu, konfirmasi dulu.** paperreset, data penting lainnya — jangan langsung hapus tanpa safety net
 22. **paper-history.json adalah raw data, bukan satu-satunya learning.** Yang penting adalah lessons.json, pool-memory.json, signal-weights.json — ini yang dipakai AI tiap cycle
 23. **Kalau nyaranin config baru, WAJIB wire kodenya juga.** maxVolatility ditambahin ke config tapi ga ada code yang baca = no-op. Selalu grep dulu apakah key-nya beneran dipake
-24. **Public RPC gratis = rate limit ketat.** Wajib ada retry+backoff. Pasang custom fetch ke Connection (1 tempat, cover semua call) — budget berkurang saat deploy, bertambah saat profit, berkurang saat loss. Kalau tidak, agent bisa deploy unlimited dan paper trade jadi tidak bermakna
+24. **Public RPC gratis = rate limit ketat.** Wajib ada retry+backoff. Pasang custom fetch ke Connection (1 tempat, cover semua call)
+25. **Paper trading = sistem PARALEL dari real positions.** SETIAP cek "udah punya posisi ini?" (occupiedPools, maxPositions, duplicate guard) WAJIB paper-aware di dry run. Kalau lupa 1 spot → token burn / re-deploy. Spots: executor.js (2x), index.js screening, screening.js getTopCandidates — budget berkurang saat deploy, bertambah saat profit, berkurang saat loss. Kalau tidak, agent bisa deploy unlimited dan paper trade jadi tidak bermakna
 21. **Telegram sendChatAction jangan di-loop cepat** — 4s interval terlalu cepat. Minimal 15s. Dan selalu respect 429 retry_after — blacklist, lessons, pool-memory. Kalau ga, paper trading cuma cosmetic dan agent ga belajar apa-apa dari dry run
 20. **Async propagation** — kalau function jadi async, semua caller WAJIB di-await. Grep `functionName` di semua files untuk verify

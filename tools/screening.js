@@ -576,6 +576,16 @@ export async function getTopCandidates({ limit = 10 } = {}) {
   const { positions } = await getMyPositions();
   const occupiedPools = new Set(positions.map((p) => p.pool));
   const occupiedMints = new Set(positions.map((p) => p.base_mint).filter(Boolean));
+  // In dry run, also exclude pools/tokens held in paper positions
+  if (process.env.DRY_RUN === "true") {
+    try {
+      const { paperGetPositions } = await import("../paper-trading.js");
+      for (const p of paperGetPositions().positions) {
+        if (p.pool_address) occupiedPools.add(p.pool_address);
+        if (p.base_mint) occupiedMints.add(p.base_mint);
+      }
+    } catch { /* ignore */ }
+  }
   const minTvl = Number(config.screening.minTvl ?? 0);
   const maxTvl = config.screening.maxTvl == null ? null : Number(config.screening.maxTvl);
   const minFeeActiveTvlRatio = Number(config.screening.minFeeActiveTvlRatio ?? 0);
