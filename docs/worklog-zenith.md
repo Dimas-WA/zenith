@@ -140,6 +140,15 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 8 — RPC Fallback (No Helius Needed) + Paper Close All
+
+- [x] wallet.js fallback: standard RPC getBalance + Jupiter price (ganti Helius DAS API)
+- [x] Bisa pakai PublicNode (solana-rpc.publicnode.com) gratis tanpa API key
+- [x] Helius jadi opsional — kalau ga ada key, auto fallback ke standard RPC
+- [x] mev-protection.js udah ada fallback (static fee kalau ga ada Helius)
+- [x] `/papercloseall` — close semua paper positions sekaligus (REPL + Telegram + bot menu)
+- [x] paperReset() backup CONFIRMED bener: backup dulu (line 506) baru clear (line 518)
+
 ### Session 7 — Auto-backup + Konfirmasi Reset
 
 - [x] `paperReset()` auto-backup sebelum hapus — timestamped, tidak overwrite

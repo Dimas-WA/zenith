@@ -53,6 +53,96 @@ function getJupiterReferralParams() {
 }
 
 /**
+ * Fallback balance fetch using standard RPC (no Helius required).
+ * Gets native SOL via getBalance, SPL tokens via getParsedTokenAccountsByOwner,
+ * and SOL price via Jupiter price API. Works with any RPC (PublicNode, etc).
+ */
+async function getWalletBalancesViaRpc(walletAddress) {
+  try {
+    const conn = getConnection();
+    const pubkey = new PublicKey(walletAddress);
+    const SOL_MINT = config.tokens.SOL;
+    const USDC_MINT = config.tokens.USDC;
+
+    // Native SOL balance
+    const lamports = await conn.getBalance(pubkey);
+    const solBalance = lamports / LAMPORTS_PER_SOL;
+
+    // SOL price from Jupiter
+    let solPrice = 0;
+    try {
+      const priceRes = await fetch(`${JUPITER_PRICE_API}?ids=${SOL_MINT}`);
+      if (priceRes.ok) {
+        const priceData = await priceRes.json();
+        solPrice = Number(priceData?.[SOL_MINT]?.usdPrice ?? priceData?.data?.[SOL_MINT]?.price ?? 0);
+      }
+    } catch { /* price optional */ }
+
+    // SPL token accounts
+    let usdcBalance = 0;
+    const tokens = [];
+    try {
+      const TOKEN_PROGRAM = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+      const resp = await conn.getParsedTokenAccountsByOwner(pubkey, { programId: TOKEN_PROGRAM });
+      for (const { account } of resp.value) {
+        const info = account.data?.parsed?.info;
+        const mint = info?.mint;
+        const amount = Number(info?.tokenAmount?.uiAmount || 0);
+        if (amount <= 0) continue;
+        if (mint === USDC_MINT) usdcBalance = amount;
+        tokens.push({ mint, symbol: mint.slice(0, 8), balance: amount, usd: null });
+      }
+    } catch (e) {
+      log("wallet_warn", `Token account fetch failed: ${e.message}`);
+    }
+
+    const solUsd = solBalance * solPrice;
+    const result = {
+      wallet: walletAddress,
+      sol: Math.round(solBalance * 1e6) / 1e6,
+      sol_price: Math.round(solPrice * 100) / 100,
+      sol_usd: Math.round(solUsd * 100) / 100,
+      usdc: Math.round(usdcBalance * 100) / 100,
+      tokens,
+      total_usd: Math.round((solUsd + usdcBalance) * 100) / 100,
+      _source: "rpc-fallback",
+    };
+
+    // Dry run paper trading: simulate budget if wallet empty
+    if (process.env.DRY_RUN === "true" && result.sol < 0.5) {
+      const PAPER_BUDGET = config.management.paperBudgetSol ?? 5.0;
+      const price = solPrice || 82;
+      let deployed = 0, pnlSol = 0;
+      try {
+        const { paperGetPositions, paperGetPerformance } = await import("../paper-trading.js");
+        deployed = paperGetPositions().positions.reduce((s, p) => s + (p.amount_sol || 0), 0);
+        const perf = paperGetPerformance();
+        if (perf.total_trades > 0) pnlSol = (perf.total_pnl_usd || 0) / price;
+      } catch { /* ignore */ }
+      const available = Math.max(0.2, PAPER_BUDGET + pnlSol - deployed);
+      result.sol = Math.round(available * 1e6) / 1e6;
+      result.sol_price = price;
+      result.sol_usd = Math.round(available * price * 100) / 100;
+      result.total_usd = result.sol_usd;
+      result._simulated = true;
+    }
+
+    return result;
+  } catch (error) {
+    log("wallet_error", `RPC fallback failed: ${error.message}`);
+    const fallback = { wallet: walletAddress, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: error.message };
+    if (process.env.DRY_RUN === "true") {
+      fallback.sol = config.management.paperBudgetSol ?? 5.0;
+      fallback.sol_price = 82;
+      fallback.sol_usd = fallback.sol * 82;
+      fallback.total_usd = fallback.sol_usd;
+      fallback._simulated = true;
+    }
+    return fallback;
+  }
+}
+
+/**
  * Get current wallet balances: SOL, USDC, and all SPL tokens using Helius Wallet API.
  * Returns USD-denominated values provided by Helius.
  */
@@ -66,8 +156,8 @@ export async function getWalletBalances() {
 
   const HELIUS_KEY = process.env.HELIUS_API_KEY;
   if (!HELIUS_KEY) {
-    log("wallet_error", "HELIUS_API_KEY not set in .env");
-    return { wallet: walletAddress, sol: 0, sol_price: 0, sol_usd: 0, usdc: 0, tokens: [], total_usd: 0, error: "Helius API key missing" };
+    // Fallback: use standard RPC + Jupiter price (no Helius needed)
+    return await getWalletBalancesViaRpc(walletAddress);
   }
 
   try {
