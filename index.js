@@ -37,7 +37,7 @@ import { appendDecision } from "./decision-log.js";
 import { checkAllPositionWhales, pruneSnapshots } from "./whale-tracker.js";
 import { checkMultiTimeframeMomentum, formatMtfResult } from "./multi-timeframe.js";
 import { getSupertrend } from "./supertrend.js";
-import { runTournament, updateTournament, formatLeaderboard, getPendingPromotion, promoteChampion, setPresetEnabled, leagueReset } from "./league.js";
+import { runTournament, updateTournament, formatLeaderboard, getPendingPromotion, promoteChampion, setPresetEnabled, leagueReset, getChampion } from "./league.js";
 import { assessMevRisk, getRecommendedPriorityFee } from "./mev-protection.js";
 import { paperUpdateAll, paperCheckExits, paperFormatStatus, paperFormatPerformance, paperGetPositions } from "./paper-trading.js";
 
@@ -1702,23 +1702,23 @@ async function telegramHandler(msg) {
       const [wallet, positions] = await Promise.all([getWalletBalances(), getMyPositions({ force: true })]);
       const paperPos = paperGetPositions();
       const mode = process.env.DRY_RUN === "true" ? "DRY RUN (Paper Trading)" : "LIVE";
+      const champion = getChampion();
       const msg2 = [
         `⚡ ZENITH — ${mode}`,
         ``,
+        `=== CHAMPION (config aktif, LLM) ===`,
         `Wallet: ${wallet.sol} SOL ($${wallet.sol_usd})`,
         `Positions: ${positions.total_positions} real | ${paperPos.total_positions} paper`,
         ``,
+        `=== LEAGUE (tournament 5 preset) ===`,
+        `Champion: ${champion} | ketik /league buat leaderboard`,
+        ``,
         `Commands:`,
-        `/status — wallet + positions`,
-        `/positions — list positions`,
-        `/candidates — top pool candidates`,
-        `/paper — paper trading positions`,
-        `/performance — paper trading stats`,
-        `/paperreset — reset paper data`,
-        `/screen — refresh candidates`,
-        `/settings — config menu`,
-        `/config — show config`,
-        `/help — all commands`,
+        `/paper /performance — champion paper trading`,
+        `/league — tournament 5 preset (balance masing-masing)`,
+        `/league on|off <preset> — toggle preset`,
+        `/promote <preset> — jadiin champion`,
+        `/status /positions /candidates /settings /config /help`,
       ].join("\n");
       await sendMessage(msg2).catch(() => {});
     } catch (e) {
