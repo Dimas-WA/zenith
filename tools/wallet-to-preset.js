@@ -39,7 +39,7 @@ function loadBaselinePreset(name) {
     screening: {
       minMcap: 100000, maxMcap: 100000000, minTvl: 8000, minVolume: 500,
       minOrganic: 50, minHolders: 300, maxTop10Pct: 60, maxBotHoldersPct: 30,
-      minFeeActiveTvlRatio: 0.1, maxVolatility: 4.0, maxTokenAgeHours: null,
+      minFeeActiveTvlRatio: 0.1, maxVolatility: 4.0, minTokenAgeHours: 0.5, maxTokenAgeHours: null,
       requireBullishSupertrend: false, requireMomentumNotBearish: true,
     },
     deploy: { mode: "single", binsBelow: 45, binsAbove: 0, budgetSol: 12, deployAmountSol: 0.5, maxDeployAmount: 2.0, positionSizePct: 0.3, maxPositions: 4, minSolToOpen: 0.55 },

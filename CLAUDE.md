@@ -78,6 +78,8 @@ Sets defined in `agent.js:6-7`. If you add a tool, also add it to the relevant s
 | timeframe | screening | "5m" |
 | category | screening | "trending" |
 | minTokenFeesSol | screening | 30 |
+| minTokenAgeHours | screening | 0.5 (skip <30min ultra-fresh tokens; null = off) |
+| maxTokenAgeHours | screening | null |
 | maxBundlersPct | screening | 30 |
 | maxTop10Pct | screening | 60 |
 | blockedLaunchpads | screening | [] |

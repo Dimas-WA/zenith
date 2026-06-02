@@ -11,12 +11,27 @@
     "minHolders": 500,
     "maxTop10Pct": 30,
     "maxBotHoldersPct": 30,
-    "minFeeActiveTvlRatio": 0.10,
+    "minFeeActiveTvlRatio": 0.1,
     "maxVolatility": 5.0,
     "maxTokenAgeHours": 48,
     "requireBullishSupertrend": true,
-    "requireMomentumNotBearish": false
+    "requireMomentumNotBearish": false,
+    "minTokenAgeHours": 0.5
   },
-  "deploy": { "mode": "single", "binsBelow": 90, "binsAbove": 0, "budgetSol": 12, "deployAmountSol": 1.0, "maxDeployAmount": 2.0, "positionSizePct": 0.15, "maxPositions": 6, "minSolToOpen": 1.0 },
-  "exit": { "stopLossPct": -25, "takeProfitPct": 12, "oorWaitMinutes": 45 }
+  "deploy": {
+    "mode": "single",
+    "binsBelow": 90,
+    "binsAbove": 0,
+    "budgetSol": 12,
+    "deployAmountSol": 1.0,
+    "maxDeployAmount": 2.0,
+    "positionSizePct": 0.15,
+    "maxPositions": 6,
+    "minSolToOpen": 1.0
+  },
+  "exit": {
+    "stopLossPct": -25,
+    "takeProfitPct": 12,
+    "oorWaitMinutes": 45
+  }
 }

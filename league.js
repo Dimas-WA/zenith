@@ -98,6 +98,7 @@ function passesPreset(candidate, preset) {
   if (s.maxBotHoldersPct != null && c.bots != null && c.bots > s.maxBotHoldersPct) return fail(`bots ${c.bots} > ${s.maxBotHoldersPct}`);
   if (s.minFeeActiveTvlRatio != null && c.fee_tvl != null && c.fee_tvl < s.minFeeActiveTvlRatio) return fail(`fee/tvl < ${s.minFeeActiveTvlRatio}`);
   if (s.maxVolatility != null && c.volatility != null && c.volatility > s.maxVolatility) return fail(`vol ${c.volatility} > ${s.maxVolatility}`);
+  if (s.minTokenAgeHours != null && (c.age_hours == null || c.age_hours < s.minTokenAgeHours)) return fail(`age ${c.age_hours}h < minTokenAgeHours ${s.minTokenAgeHours}h (too fresh)`);
   if (s.maxTokenAgeHours != null && c.age_hours != null && c.age_hours > s.maxTokenAgeHours) return fail(`age ${c.age_hours}h > ${s.maxTokenAgeHours}h`);
   if (s.requireBullishSupertrend && c.supertrend_bullish !== true) return fail("supertrend not bullish");
   if (s.requireMomentumNotBearish && c.mtf_bearish === true) return fail("momentum bearish");
