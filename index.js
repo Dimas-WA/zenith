@@ -41,7 +41,7 @@ import { appendDecision } from "./decision-log.js";
 import { checkAllPositionWhales, pruneSnapshots } from "./whale-tracker.js";
 import { checkMultiTimeframeMomentum, formatMtfResult } from "./multi-timeframe.js";
 import { getSupertrend } from "./supertrend.js";
-import { runTournament, updateTournament, formatLeaderboard, getPendingPromotion, promoteChampion, setPresetEnabled, leagueReset, getChampion } from "./league.js";
+import { runTournament, updateTournament, formatLeaderboard, formatLeaguePositions, getPendingPromotion, promoteChampion, setPresetEnabled, leagueReset, getChampion } from "./league.js";
 import { assessMevRisk, getRecommendedPriorityFee } from "./mev-protection.js";
 import { paperUpdateAll, paperCheckExits, paperFormatStatus, paperFormatPerformance, paperGetPositions } from "./paper-trading.js";
 
@@ -1787,6 +1787,11 @@ async function telegramHandler(msg) {
   }
   if (text === "/league") {
     await sendMessage(formatLeaderboard()).catch(() => {});
+    return;
+  }
+  const leaguePosCmd = text.match(/^\/(?:leaguepos|league\s+pos)(?:\s+(\S+))?$/i);
+  if (leaguePosCmd) {
+    await sendMessage(formatLeaguePositions(leaguePosCmd[1] || null)).catch(() => {});
     return;
   }
   const leagueToggle = text.match(/^\/league\s+(on|off)\s+(\S+)$/i);

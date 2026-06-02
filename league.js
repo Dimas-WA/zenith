@@ -363,6 +363,51 @@ export function formatLeaderboard() {
   return lines.join("\n");
 }
 
+/**
+ * List OPEN tournament positions grouped by preset, so it's clear which preset owns what.
+ * @param {string|null} filterPreset - if given, only show that preset's positions.
+ */
+export function formatLeaguePositions(filterPreset = null) {
+  const positions = loadPositions().filter((p) => !p.closed);
+  const champion = getChampion();
+
+  if (positions.length === 0) {
+    return "🏆 LEAGUE POSITIONS — belum ada posisi open di turnamen.";
+  }
+
+  // Group by preset
+  const byPreset = {};
+  for (const p of positions) {
+    if (filterPreset && p.preset !== filterPreset) continue;
+    (byPreset[p.preset] ||= []).push(p);
+  }
+
+  const presetNames = Object.keys(byPreset).sort();
+  if (presetNames.length === 0) {
+    return `🏆 LEAGUE POSITIONS — preset "${filterPreset}" tidak punya posisi open.`;
+  }
+
+  const lines = [`🏆 LEAGUE POSITIONS — ${positions.length} open (per preset)`, ""];
+  for (const name of presetNames) {
+    const pos = byPreset[name];
+    const crown = name === champion ? "👑 " : "";
+    const totalPnl = pos.reduce((s, p) => s + (p.est_total_pnl_usd || 0), 0);
+    lines.push(`${crown}${name} — ${pos.length} open | PnL $${totalPnl.toFixed(2)}`);
+    for (const p of pos) {
+      const moved = (p.current_active_bin ?? p.entry_active_bin) - p.entry_active_bin;
+      const arrow = moved === 0 ? "→0" : moved > 0 ? `↑${moved}` : `↓${Math.abs(moved)}`;
+      const range = p.in_range ? "🟢 IN" : `🔴 OOR ${p.minutes_out_of_range || 0}m`;
+      lines.push(
+        `   ${p.pool_name || (p.pool_address || "").slice(0, 8)} | ${p.amount_sol} SOL | bin ${arrow} | ${range} | ` +
+        `${(p.est_total_pnl_pct ?? 0) >= 0 ? "+" : ""}${p.est_total_pnl_pct ?? 0}% ($${(p.est_total_pnl_usd ?? 0).toFixed(2)})`
+      );
+    }
+    lines.push("");
+  }
+  lines.push("Tip: /leaguepos <preset> buat fokus satu preset.");
+  return lines.join("\n").trim();
+}
+
 // ─── Promotion ───────────────────────────────────────────────
 let _lastPromotionProposal = null;
 

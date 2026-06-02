@@ -455,6 +455,7 @@ const BOT_COMMANDS = [
   { command: "performance", description: "Paper trading history & win rate" },
   { command: "papercloseall", description: "Close all open paper positions" },
   { command: "league",      description: "Preset tournament leaderboard" },
+  { command: "leaguepos",   description: "Open league positions grouped by preset" },
   { command: "promote",     description: "Promote preset to champion: /promote <name>" },
   { command: "studywallet", description: "Study a top wallet's playstyle: /studywallet <addr>" },
   { command: "makepreset",  description: "Make a League preset from a wallet: /makepreset <addr>" },
