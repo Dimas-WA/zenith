@@ -79,6 +79,30 @@ function isAuthorizedIncomingMessage(msg) {
 }
 
 // ─── Core send ───────────────────────────────────────────────────
+/**
+ * Download a Telegram document (e.g. an uploaded .json) and return its text content.
+ * Returns { ok, text } or { ok:false, error }. Caps size to avoid abuse.
+ */
+export async function downloadTelegramFile(document, { maxBytes = 2_000_000 } = {}) {
+  if (!BASE) return { ok: false, error: "Telegram not configured" };
+  if (!document?.file_id) return { ok: false, error: "No file_id on document" };
+  if (document.file_size && document.file_size > maxBytes) {
+    return { ok: false, error: `File too large (${document.file_size} bytes, max ${maxBytes})` };
+  }
+  try {
+    const meta = await fetch(`${BASE}/getFile?file_id=${document.file_id}`).then((r) => r.json());
+    const filePath = meta?.result?.file_path;
+    if (!filePath) return { ok: false, error: "Could not resolve file_path" };
+    const res = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${filePath}`);
+    if (!res.ok) return { ok: false, error: `Download failed: ${res.status}` };
+    const text = await res.text();
+    if (text.length > maxBytes) return { ok: false, error: "File content too large" };
+    return { ok: true, text, file_name: document.file_name || filePath.split("/").pop() };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 export function isEnabled() {
   return !!TOKEN;
 }
@@ -399,7 +423,8 @@ async function poll(onMessage) {
           continue;
         }
         const msg = update.message;
-        if (!msg?.text) continue;
+        // Accept text commands AND document uploads (e.g. wallet study .json files).
+        if (!msg?.text && !msg?.document) continue;
         if (!isAuthorizedIncomingMessage(msg)) continue;
         await onMessage(msg);
       }
@@ -431,6 +456,8 @@ const BOT_COMMANDS = [
   { command: "papercloseall", description: "Close all open paper positions" },
   { command: "league",      description: "Preset tournament leaderboard" },
   { command: "promote",     description: "Promote preset to champion: /promote <name>" },
+  { command: "studywallet", description: "Study a top wallet's playstyle: /studywallet <addr>" },
+  { command: "makepreset",  description: "Make a League preset from a wallet: /makepreset <addr>" },
   { command: "paperreset", description: "Clear all paper trading data" },
   { command: "deploy",     description: "Deploy candidate by cached index" },
   { command: "briefing",   description: "Morning briefing" },

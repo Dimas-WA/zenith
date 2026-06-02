@@ -23,7 +23,11 @@ import {
   notifyOutOfRange,
   isEnabled as telegramEnabled,
   createLiveMessage,
+  downloadTelegramFile,
 } from "./telegram.js";
+import { studyWallet, analyzeWalletJson } from "./tools/wallet-study.js";
+import { makePresetFromProfile } from "./tools/wallet-to-preset.js";
+import { studyTopLPers } from "./tools/study.js";
 import { generateBriefing } from "./briefing.js";
 import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
@@ -1589,7 +1593,90 @@ async function drainTelegramQueue() {
   }
 }
 
+function formatWalletStudy(res) {
+  if (!res || res.error) return `❌ ${res?.error || "Gagal mempelajari wallet."}`;
+  const p = res.profile;
+  if (!p || p.enough_data === false) {
+    return `⚠️ ${p?.message || "Data tidak cukup untuk profil."}`;
+  }
+  return [
+    `🧠 WALLET STUDY — ${(res.wallet || "").slice(0, 8)}…`,
+    `Pool discan: ${res.pools_scanned}/${res.pools_total} | posisi closed: ${res.closed_positions_found} (sample ${p.sample_size})`,
+    ``,
+    `Playstyle: ${p.classification}`,
+    `Win-rate: ${p.win_rate_pct}%`,
+    `Range: ~${p.bin_width?.median} bin (${p.bin_width?.style}, ${p.bin_width?.min}–${p.bin_width?.max})`,
+    `Hold: median ${p.hold_hours?.median}h (avg ${p.hold_hours?.avg}h)`,
+    `Sizing: ~${p.sizing_sol?.median} SOL/pos (konsistensi ${p.sizing_sol?.consistency})`,
+    `Single-sided: ${Math.round((p.single_sided_ratio ?? 0) * 100)}% | SOL-quote: ${Math.round((p.sol_quote_ratio ?? 0) * 100)}%`,
+    `Fee/TVL — winners ${p.fee_per_tvl_24h?.winners_median} vs losers ${p.fee_per_tvl_24h?.losers_median}`,
+    `PnL: median ${p.pnl_pct?.median}% (best ${p.pnl_pct?.best}%, worst ${p.pnl_pct?.worst}%)`,
+    p.laddering?.detected ? `Laddering: ${p.laddering.direction} (skor ${p.laddering.score})` : `Laddering: tidak terdeteksi`,
+    ``,
+    `💡 ${p.insight}`,
+    `⚠️ ${p.survivorship_warning}`,
+    ``,
+    `→ /makepreset ${res.wallet} untuk jadikan preset League.`,
+  ].join("\n");
+}
+
+function formatPresetResult(built, profile) {
+  if (!built || built.error) return `❌ ${built?.error || "Gagal membuat preset."}`;
+  const pr = built.preset;
+  const lines = [
+    `🧪 PRESET DIBUAT — ${pr.name}`,
+    `"${pr.label}" (dari ${profile?.classification})`,
+    built.saved?.ok ? `Tersimpan: ${built.saved.file} ✅` : `⚠️ Belum tersimpan: ${built.saved?.error || "?"}`,
+    ``,
+    `deploy: mode=${pr.deploy.mode}, binsBelow=${pr.deploy.binsBelow}, sizePct=${pr.deploy.positionSizePct}`,
+    `exit: TP ${pr.exit.takeProfitPct}% / SL ${pr.exit.stopLossPct}% / OOR ${pr.exit.oorWaitMinutes}m`,
+  ];
+  if (built.warnings?.length) {
+    lines.push(``, `⚠️ WARNING:`);
+    built.warnings.forEach((w) => lines.push(`• ${w}`));
+  }
+  lines.push(
+    ``,
+    `Preset ini masuk PAPER league & tanding lawan champion. Cek /league. Promote ke live cuma lewat /promote ${pr.name} kalau menang.`
+  );
+  return lines.join("\n");
+}
+
+async function handleWalletJsonUpload(msg) {
+  const doc = msg.document;
+  const name = doc?.file_name || "file";
+  if (!/\.json$/i.test(name) && doc?.mime_type !== "application/json") {
+    await sendMessage(`⚠️ Kirim file .json (wallet study). File "${name}" dilewati.`).catch(() => {});
+    return;
+  }
+  await sendMessage(`📥 Menerima ${name}, memproses…`).catch(() => {});
+  const dl = await downloadTelegramFile(doc).catch((e) => ({ ok: false, error: e.message }));
+  if (!dl.ok) {
+    await sendMessage(`❌ Gagal unduh file: ${dl.error}`).catch(() => {});
+    return;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(dl.text);
+  } catch (e) {
+    await sendMessage(`❌ JSON tidak valid: ${e.message}`).catch(() => {});
+    return;
+  }
+  const walletHint = msg?.caption?.trim().match(/[1-9A-HJ-NP-Za-km-z]{32,44}/)?.[0] || null;
+  const profile = analyzeWalletJson(parsed, { wallet: walletHint });
+  await sendMessage(formatWalletStudy({ wallet: walletHint || "(dari file)", pools_scanned: "?", pools_total: "?", closed_positions_found: profile.sample_size, profile })).catch(() => {});
+  if (profile.enough_data) {
+    const built = makePresetFromProfile(profile, { baseline: "zenith", name: walletHint ? undefined : `wallet_upload_${Date.now().toString(36).slice(-4)}` });
+    await sendMessage(formatPresetResult(built, profile)).catch(() => {});
+  }
+}
+
 async function telegramHandler(msg) {
+  // ─── Document upload (wallet study .json) ─────────────────────
+  if (msg?.document) {
+    await handleWalletJsonUpload(msg);
+    return;
+  }
   const text = msg?.text?.trim();
   if (!text) return;
   if (msg?.isCallback && text.startsWith("cfg:")) {
@@ -1665,6 +1752,51 @@ async function telegramHandler(msg) {
   if (promoteCmd) {
     const result = promoteChampion(promoteCmd[1]);
     await sendMessage(result.ok ? `👑 Champion baru: ${result.champion}` : `❌ ${result.error}`).catch(() => {});
+    return;
+  }
+  const studyWalletCmd = text.match(/^\/studywallet\s+(\S+)$/i);
+  if (studyWalletCmd) {
+    await sendMessage(`🔎 Mempelajari wallet ${studyWalletCmd[1].slice(0, 8)}… (tarik histori Meteora)`).catch(() => {});
+    const res = await studyWallet({ wallet: studyWalletCmd[1] }).catch((e) => ({ error: e.message }));
+    await sendMessage(formatWalletStudy(res)).catch(() => {});
+    return;
+  }
+  const makePresetCmd = text.match(/^\/makepreset\s+(\S+)(?:\s+(\S+))?$/i);
+  if (makePresetCmd) {
+    await sendMessage(`🧪 Membuat preset dari wallet ${makePresetCmd[1].slice(0, 8)}…`).catch(() => {});
+    const study = await studyWallet({ wallet: makePresetCmd[1] }).catch((e) => ({ error: e.message }));
+    if (study?.error || !study?.profile?.enough_data) {
+      await sendMessage(`❌ ${study?.error || study?.profile?.message || "Data wallet tidak cukup."}`).catch(() => {});
+      return;
+    }
+    const built = makePresetFromProfile(study.profile, { baseline: makePresetCmd[2] || "zenith" });
+    await sendMessage(formatPresetResult(built, study.profile)).catch(() => {});
+    return;
+  }
+  const suggestCmd = text.match(/^\/suggestwallets\s+(\S+)$/i);
+  if (suggestCmd) {
+    await sendMessage(`🔎 Mencari top LPer di pool ${suggestCmd[1].slice(0, 8)}…`).catch(() => {});
+    const res = await studyTopLPers({ pool_address: suggestCmd[1], limit: 5 }).catch((e) => ({ error: e.message }));
+    const lpers = Array.isArray(res?.lpers) ? res.lpers : [];
+    if (!lpers.length) {
+      await sendMessage(`⚠️ ${res?.message || "Tidak ada data top LPer untuk pool ini."}`).catch(() => {});
+      return;
+    }
+    const buttons = lpers.slice(0, 5).map((l) => [{
+      text: `📚 Study ${l.owner_short || l.owner.slice(0, 6)} (PnL ${l.summary?.avg_open_pnl_pct ?? "?"}%)`,
+      callback_data: `studyw:${l.owner}`,
+    }]);
+    await sendMessageWithButtons(
+      `Top LPer di pool ini — tap untuk pelajari playstyle-nya:`,
+      buttons
+    ).catch(() => {});
+    return;
+  }
+  if (msg?.isCallback && text.startsWith("studyw:")) {
+    const addr = text.slice("studyw:".length);
+    await answerCallbackQuery(msg.callbackQueryId, "Mempelajari…").catch(() => {});
+    const res = await studyWallet({ wallet: addr }).catch((e) => ({ error: e.message }));
+    await sendMessage(formatWalletStudy(res)).catch(() => {});
     return;
   }
   if (text === "/papercloseall") {

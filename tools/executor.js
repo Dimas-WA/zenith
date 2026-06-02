@@ -11,6 +11,8 @@ import {
 } from "./dlmm.js";
 import { getWalletBalances, swapToken } from "./wallet.js";
 import { studyTopLPers } from "./study.js";
+import { studyWallet } from "./wallet-study.js";
+import { makePresetFromProfile } from "./wallet-to-preset.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
 import { setPositionInstruction } from "../state.js";
 
@@ -279,6 +281,30 @@ const toolMap = {
   swap_token: swapToken,
   get_top_lpers: studyTopLPers,
   study_top_lpers: studyTopLPers,
+  study_wallet: ({ wallet, max_pools }) => studyWallet({ wallet, maxPools: max_pools }),
+  make_preset_from_wallet: async ({ wallet, baseline, name }) => {
+    const study = await studyWallet({ wallet });
+    if (study?.error) return study;
+    if (!study.profile?.enough_data) {
+      return { error: study.profile?.message || "Not enough wallet data to build a preset.", study };
+    }
+    const result = makePresetFromProfile(study.profile, { baseline, name });
+    if (result.error) return result;
+    return {
+      created: result.saved?.ok === true,
+      preset_name: result.preset?.name,
+      file: result.saved?.file,
+      label: result.preset?.label,
+      classification: study.profile.classification,
+      win_rate_pct: study.profile.win_rate_pct,
+      sample_size: study.profile.sample_size,
+      deploy: result.preset?.deploy,
+      exit: result.preset?.exit,
+      warnings: result.warnings,
+      rationale: result.rationale,
+      note: "Preset is sandboxed in the PAPER league. It will compete next tournament cycle. Promote to live only via /promote after it proves itself.",
+    };
+  },
   set_position_note: ({ position_address, instruction }) => {
     const ok = setPositionInstruction(position_address, instruction || null);
     if (!ok) return { error: `Position ${position_address} not found in state` };

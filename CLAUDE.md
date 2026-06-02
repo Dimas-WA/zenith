@@ -144,6 +144,10 @@ Handled directly in `index.js` (bypass LLM):
 | `/positions` | List open positions with progress bar |
 | `/close <n>` | Close position by list index |
 | `/set <n> <note>` | Set note on position by list index |
+| `/studywallet <addr>` | Study a top wallet's DLMM playstyle (Meteora DataAPI) |
+| `/makepreset <addr> [baseline]` | Generate a League preset from a wallet's playstyle |
+| `/suggestwallets <pool>` | List top LPers on a pool with one-tap "Study" buttons |
+| (upload `.json`) | Send a wallet-study `.json` file → profile + auto preset |
 
 Progress bar format: `[████████░░░░░░░░░░░░] 40%` (no bin numbers, no arrows)
 
@@ -195,6 +199,49 @@ const actualBaseFee = baseFactor > 0
 - `evolveThresholds()` — adjusts screening thresholds based on winners vs losers
 - Performance recorded via `recordPerformance()` called from executor.js after `close_position`
 - **Fixed**: `evolveThresholds()` bug fixed — now correctly uses `minFeeActiveTvlRatio` and `maxBinsBelow`
+
+---
+
+## Wallet Learning (Wallet → League Preset)
+
+Learn DLMM playstyle from proven top wallets and turn it into a **League preset** that competes
+in the paper tournament before ever touching live capital. Discovery is manual (pick wallets on
+lpagent.io by your budget) + auto-suggest from pools (`/suggestwallets`).
+
+```
+tools/wallet-study.js     Fetch + analyze a wallet (Meteora DataAPI, read-only)
+tools/wallet-to-preset.js Translate a playstyle profile → valid League preset + conflict warnings
+```
+
+**Data pipeline (Meteora DataAPI, public, no-auth):**
+1. `GET https://dlmm.datapi.meteora.ag/portfolio?user={wallet}` → all pools the wallet touched + per-pool aggregates (paginated, `hasNext`).
+2. `GET https://dlmm.datapi.meteora.ag/positions/{pool}/pnl?user={wallet}&status=closed&page=1&page_size=100` → individual closed positions.
+
+**`analyzeWalletProfile(positions)`** distils: bin width (range tightness), hold time, sizing style,
+single-sided ratio, SOL-quote ratio, win-rate, fee/TVL (winners vs losers), laddering (time↔lowerBinId
+correlation), and a classification (`narrow-scalper` / `narrow-ladder` / `wide-passive` / `narrow-active` /
+`balanced-swing`). Requires ≥5 usable closed positions; always emits a survivorship warning.
+
+**`buildPresetFromProfile(profile, { baseline })`** derives ONLY observable fields from the wallet:
+- `deploy.binsBelow` / `mode` ← bin width + single-sided ratio
+- `exit.oorWaitMinutes` ← typical hold time
+- `exit.takeProfitPct` / `stopLossPct` ← realised PnL distribution
+- `deploy.positionSizePct` ← sizing **style** (consistency), NOT absolute size
+
+Screening filters (mcap/tvl/organic) are **inherited from a baseline preset** (default `zenith`) — they
+aren't observable from PnL data, so they're not invented. Absolute position size is intentionally not
+copied (their risk tolerance ≠ yours).
+
+**Safety model:**
+- Generated preset is **sandboxed in the PAPER league** (`league.js`); it only paper-trades until
+  promoted to champion via `/promote` (explicit user action).
+- If `binsBelow < 35` (the live executor's hard floor `max(35, minBinsBelow)`), a warning is surfaced —
+  the preset can compete in paper freely, but promoting to live needs override/clamp.
+- No `evolveThresholds`/live config mutation. No on-chain writes.
+
+**Tools:** `study_wallet`, `make_preset_from_wallet` (in `SCREENER_TOOLS` + GENERAL `study` intent).
+**Telegram:** `/studywallet`, `/makepreset`, `/suggestwallets`, and `.json` document upload
+(`downloadTelegramFile` in telegram.js; non-text messages now pass the poll filter).
 
 ---
 

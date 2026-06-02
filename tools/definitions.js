@@ -1232,6 +1232,58 @@ Blacklisted tokens are filtered BEFORE the LLM even sees pool candidates.`,
       }
     }
   },
+
+  {
+    type: "function",
+    function: {
+      name: "study_wallet",
+      description: `Study a top DLMM wallet's playstyle from its Meteora on-chain history.
+
+Fetches the wallet's closed-position history via Meteora DataAPI (portfolio + per-pool PnL)
+and distils a playstyle profile: typical bin width (range tightness), hold time, sizing style,
+single-sided ratio, win-rate, fee/TVL preference, laddering behaviour, and a classification
+(narrow-scalper / narrow-ladder / wide-passive / balanced-swing).
+
+Use this to learn from wallets you find on lpagent.io/smart-lp, or on wallets surfaced by
+study_top_lpers. Requires >=5 usable closed positions or it reports insufficient data.
+This is READ-ONLY — it does not change any settings. Follow up with make_preset_from_wallet
+to turn a good profile into a League preset that competes in the paper tournament.`,
+      parameters: {
+        type: "object",
+        properties: {
+          wallet: { type: "string", description: "Solana wallet address to study" },
+          max_pools: { type: "number", description: "Cap how many of the wallet's pools to scan. Default 12." }
+        },
+        required: ["wallet"]
+      }
+    }
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "make_preset_from_wallet",
+      description: `Generate a League preset from a studied wallet's playstyle and save it so it
+competes in the PAPER tournament against the current champion.
+
+Only fields observable from on-chain positions are derived from the wallet (bin width, hold→OOR
+wait, take-profit/stop-loss, sizing STYLE). Screening filters are inherited from a baseline preset
+(default "zenith"). Absolute position size is intentionally NOT copied — the wallet's risk tolerance
+differs from yours.
+
+The new preset is SANDBOXED: it only paper-trades until the user explicitly promotes it to champion
+via /promote. Any safety conflicts (e.g. bin width below the live floor of 35) are returned as warnings.`,
+      parameters: {
+        type: "object",
+        properties: {
+          wallet: { type: "string", description: "Wallet address to study and convert (re-studies if profile not provided)" },
+          baseline: { type: "string", description: "Preset name to inherit screening filters from. Default 'zenith'." },
+          name: { type: "string", description: "Optional preset name override (letters/digits/underscore)." }
+        },
+        required: ["wallet"]
+      }
+    }
+  },
 ];
 
 export const tools = toolDefinitions.map((tool) => ({
