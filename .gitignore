@@ -43,6 +43,9 @@ whale-snapshots.json
 circuit-breaker.json
 paper-positions.json
 paper-history.json
+league-positions.json
+league-history.json
+preset-league.json
 
 # Playwright MCP browser logs
 .playwright-mcp/

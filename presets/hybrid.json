@@ -1,0 +1,22 @@
+{
+  "name": "hybrid",
+  "label": "Hybrid (EP discipline + Zenith brains)",
+  "enabled": true,
+  "screening": {
+    "minMcap": 200000,
+    "maxMcap": 100000000,
+    "minTvl": 10000,
+    "minVolume": 3000,
+    "minOrganic": 55,
+    "minHolders": 500,
+    "maxTop10Pct": 45,
+    "maxBotHoldersPct": 35,
+    "minFeeActiveTvlRatio": 0.10,
+    "maxVolatility": 4.0,
+    "maxTokenAgeHours": 120,
+    "requireBullishSupertrend": true,
+    "requireMomentumNotBearish": true
+  },
+  "deploy": { "mode": "single", "binsBelow": 45, "binsAbove": 0 },
+  "exit": { "stopLossPct": -12, "takeProfitPct": 8, "oorWaitMinutes": 30 }
+}

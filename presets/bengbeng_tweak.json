@@ -1,0 +1,22 @@
+{
+  "name": "bengbeng_tweak",
+  "label": "bengbeng Fast Bid-Ask (tweaked)",
+  "enabled": true,
+  "screening": {
+    "minMcap": 250000,
+    "maxMcap": 100000000,
+    "minTvl": 15000,
+    "minVolume": 8000,
+    "minOrganic": 60,
+    "minHolders": 500,
+    "maxTop10Pct": 45,
+    "maxBotHoldersPct": 35,
+    "minFeeActiveTvlRatio": 0.10,
+    "maxVolatility": 4.5,
+    "maxTokenAgeHours": 48,
+    "requireBullishSupertrend": true,
+    "requireMomentumNotBearish": true
+  },
+  "deploy": { "mode": "dual", "binsBelow": 34, "binsAbove": 34 },
+  "exit": { "stopLossPct": -12, "takeProfitPct": 6, "oorWaitMinutes": 15 }
+}

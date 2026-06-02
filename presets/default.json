@@ -1,0 +1,22 @@
+{
+  "name": "default",
+  "label": "Default (Meridian baseline)",
+  "enabled": true,
+  "screening": {
+    "minMcap": 150000,
+    "maxMcap": 100000000,
+    "minTvl": 10000,
+    "minVolume": 500,
+    "minOrganic": 55,
+    "minHolders": 500,
+    "maxTop10Pct": 60,
+    "maxBotHoldersPct": 30,
+    "minFeeActiveTvlRatio": 0.05,
+    "maxVolatility": null,
+    "maxTokenAgeHours": null,
+    "requireBullishSupertrend": false,
+    "requireMomentumNotBearish": false
+  },
+  "deploy": { "mode": "single", "binsBelow": 50, "binsAbove": 0 },
+  "exit": { "stopLossPct": -20, "takeProfitPct": 8, "oorWaitMinutes": 30 }
+}

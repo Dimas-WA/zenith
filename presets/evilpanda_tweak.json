@@ -1,0 +1,22 @@
+{
+  "name": "evilpanda_tweak",
+  "label": "EvilPanda (wide range, patient)",
+  "enabled": true,
+  "screening": {
+    "minMcap": 250000,
+    "maxMcap": 100000000,
+    "minTvl": 10000,
+    "minVolume": 5000,
+    "minOrganic": 55,
+    "minHolders": 500,
+    "maxTop10Pct": 30,
+    "maxBotHoldersPct": 30,
+    "minFeeActiveTvlRatio": 0.10,
+    "maxVolatility": 5.0,
+    "maxTokenAgeHours": 48,
+    "requireBullishSupertrend": true,
+    "requireMomentumNotBearish": false
+  },
+  "deploy": { "mode": "single", "binsBelow": 90, "binsAbove": 0 },
+  "exit": { "stopLossPct": -25, "takeProfitPct": 12, "oorWaitMinutes": 45 }
+}

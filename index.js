@@ -37,6 +37,7 @@ import { appendDecision } from "./decision-log.js";
 import { checkAllPositionWhales, pruneSnapshots } from "./whale-tracker.js";
 import { checkMultiTimeframeMomentum, formatMtfResult } from "./multi-timeframe.js";
 import { getSupertrend } from "./supertrend.js";
+import { runTournament, updateTournament, formatLeaderboard, getPendingPromotion, promoteChampion, setPresetEnabled, leagueReset } from "./league.js";
 import { assessMevRisk, getRecommendedPriorityFee } from "./mev-protection.js";
 import { paperUpdateAll, paperCheckExits, paperFormatStatus, paperFormatPerformance, paperGetPositions } from "./paper-trading.js";
 
@@ -238,6 +239,25 @@ export async function runManagementCycle({ silent = false } = {}) {
         const paperPos = paperGetPositions();
         if (paperPos.total_positions > 0) {
           log("paper", `Virtual positions: ${paperPos.total_positions} | ` + paperPos.positions.map(p => `${p.pool}: ${p.total_pnl_pct}%`).join(", "));
+        }
+
+        // Preset League: update tournament positions + check for promotion proposal
+        await updateTournament({
+          fetchActiveBin: (pool) => getActiveBin({ pool_address: pool }),
+          solPrice,
+        });
+        const promo = getPendingPromotion();
+        if (promo && !silent && telegramEnabled()) {
+          sendMessageWithButtons(
+            `🏆 PROMOTION PROPOSAL\n\nChallenger "${promo.challenger}" ngalahin champion "${promo.champion}":\n` +
+            `${promo.challenger}: ${promo.challengerStats.win_rate}% WR | avg ${promo.challengerStats.avg_pnl_pct}% | ${promo.challengerStats.closed} trade\n` +
+            `${promo.champion}: ${promo.championStats.win_rate}% WR | avg ${promo.championStats.avg_pnl_pct}% | ${promo.championStats.closed} trade\n\n` +
+            `Promote ke LIVE champion?`,
+            [[
+              { text: "✅ Promote", callback_data: `promote:${promo.challenger}` },
+              { text: "❌ Tolak", callback_data: "promote:reject" },
+            ]]
+          ).catch(() => {});
         }
       } catch (e) {
         log("paper_warn", `Paper update failed: ${e.message}`);
@@ -743,6 +763,42 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
       return block;
     });
+
+    // ─── Preset League: run paper tournament (dry run only, deterministic, no LLM cost) ──
+    if (process.env.DRY_RUN === "true") {
+      try {
+        const snapshots = passing.map(({ pool, sw, ti }, i) => {
+          const activeBin = activeBinResults[i]?.status === "fulfilled" ? activeBinResults[i].value?.binId : null;
+          const mtf = i < 5 && mtfResults[i]?.status === "fulfilled" ? mtfResults[i].value : null;
+          const st = i < 5 && supertrendResults[i]?.status === "fulfilled" ? supertrendResults[i].value : null;
+          const mtfOverall = String(mtf?.overall || "").toLowerCase();
+          return {
+            pool_address: pool.pool,
+            pool_name: pool.name,
+            base_mint: pool.base?.mint || pool.base_mint || ti?.mint || null,
+            mcap: pool.mcap ?? null,
+            tvl: pool.tvl ?? pool.active_tvl ?? null,
+            volume: pool.volume_window ?? null,
+            organic: pool.organic_score ?? null,
+            holders: ti?.holders ?? null,
+            top10: ti?.audit?.top_holders_pct ?? null,
+            bots: ti?.audit?.bot_holders_pct ?? null,
+            fee_tvl: pool.fee_active_tvl_ratio ?? null,
+            volatility: pool.volatility ?? null,
+            age_hours: pool.token_age_hours ?? null,
+            active_bin: activeBin,
+            bin_step: pool.bin_step ?? 100,
+            risk_score: pool.risk_score ?? null,
+            mtf_bearish: mtfOverall.includes("bearish") || mtf?.confirmed === false,
+            supertrend_bullish: st?.bullish === true,
+          };
+        });
+        const solPrice = currentBalance.sol_price || 82;
+        runTournament(snapshots, { solPrice });
+      } catch (e) {
+        log("league_warn", `Tournament run failed: ${e.message}`);
+      }
+    }
 
     const weightsSummary = config.darwin?.enabled ? getWeightsSummary() : null;
 
@@ -1544,6 +1600,20 @@ async function telegramHandler(msg) {
     }
     return;
   }
+  // ─── Promotion confirm callback ───────────────────────────
+  if (msg?.isCallback && text.startsWith("promote:")) {
+    const target = text.split(":")[1];
+    if (target === "reject") {
+      await answerCallbackQuery(msg.callbackQueryId, "Ditolak").catch(() => {});
+      await editMessage("❌ Promosi ditolak. Champion tetap.", msg.messageId).catch(() => {});
+    } else {
+      const result = promoteChampion(target);
+      await answerCallbackQuery(msg.callbackQueryId, result.ok ? "Promoted" : "Failed").catch(() => {});
+      await editMessage(result.ok ? `👑 Champion baru: ${result.champion}` : `❌ ${result.error}`, msg.messageId).catch(() => {});
+    }
+    return;
+  }
+
   // ─── Whale alert quick-close callback ─────────────────────
   if (msg?.isCallback && text.startsWith("whale:")) {
     const parts = text.split(":");
@@ -1579,6 +1649,22 @@ async function telegramHandler(msg) {
   }
   if (text === "/performance") {
     await sendMessage(paperFormatPerformance()).catch(() => {});
+    return;
+  }
+  if (text === "/league") {
+    await sendMessage(formatLeaderboard()).catch(() => {});
+    return;
+  }
+  const leagueToggle = text.match(/^\/league\s+(on|off)\s+(\S+)$/i);
+  if (leagueToggle) {
+    const result = setPresetEnabled(leagueToggle[2], leagueToggle[1].toLowerCase() === "on");
+    await sendMessage(result.ok ? `Preset ${result.preset} → ${result.enabled ? "ON" : "OFF"}` : `❌ ${result.error}`).catch(() => {});
+    return;
+  }
+  const promoteCmd = text.match(/^\/promote\s+(\S+)$/i);
+  if (promoteCmd) {
+    const result = promoteChampion(promoteCmd[1]);
+    await sendMessage(result.ok ? `👑 Champion baru: ${result.champion}` : `❌ ${result.error}`).catch(() => {});
     return;
   }
   if (text === "/papercloseall") {
@@ -2114,6 +2200,12 @@ Commands:
 
     if (input === "/performance") {
       console.log(`\n${paperFormatPerformance()}\n`);
+      rl.prompt();
+      return;
+    }
+
+    if (input === "/league") {
+      console.log(`\n${formatLeaderboard()}\n`);
       rl.prompt();
       return;
     }

@@ -731,6 +731,66 @@ Setiap `/paperreset`:
 
 ---
 
+## 🏆 20. PRESET LEAGUE — Paper Strategy Tournament
+
+**Files:** league.js + presets/*.json
+
+### Konsep (kaya "League Mode" Cronos)
+Adu banyak strategi preset secara PARALEL di paper trading. Live cuma 1 champion.
+
+```
+PAPER: semua preset adu virtual (default, zenith, hybrid, bengbeng, evilpanda)
+  ↓ tiap preset deploy virtual pakai filter + exit rules sendiri
+LIVE: cuma champion yang jalan real (user pilih via confirm)
+```
+
+### 5 Preset Built-in
+| Preset | Karakter |
+|--------|----------|
+| default | Meridian baseline (longgar) |
+| zenith | Data-tuned 4h |
+| hybrid | EP discipline + Zenith brains |
+| bengbeng_tweak | Fast bid-ask, dual-side, age<48h, TP 6% |
+| evilpanda_tweak | Wide range 90 bins, patient, TP 12% |
+
+### Cara Kerja
+1. Tiap screening cycle, semua preset enabled evaluasi kandidat sama secara **deterministic** (no LLM = no token cost)
+2. Preset yang lolos filter → buka posisi virtual (storage terpisah `league-*.json`)
+3. Tiap posisi pakai exit rules preset-nya sendiri (SL/TP/OOR beda-beda)
+4. Leaderboard track WR, avg PnL, fees per preset
+
+### Auto-Promote (AI Evolve Mode = HYBRID)
+```
+PAPER evolve → AUTO (virtual, ga ada duit, bebas eksperimen)
+LIVE promote → WAJIB CONFIRM user (nyangkut duit beneran)
+```
+Kalau challenger ngalahin champion (avg PnL +1% margin) DAN udah ≥30 trade → notif Telegram:
+```
+🏆 PROMOTION PROPOSAL
+challenger "bengbeng_tweak" ngalahin champion "hybrid"
+bengbeng: 72% WR | avg +2.4% | 45 trade
+hybrid: 64% WR | avg +1.1% | 38 trade
+Promote ke LIVE? [✅ Promote] [❌ Tolak]
+```
+
+### Commands
+| Command | Fungsi |
+|---------|--------|
+| `/league` | Leaderboard ranking |
+| `/league on <preset>` | Aktifkan preset di tournament |
+| `/league off <preset>` | Matikan preset (kalau hasilnya jelek) |
+| `/promote <name>` | Manual promote ke champion |
+
+### Nambah Preset ke-6 (AI evolve atau manual)
+Bikin file baru di `presets/nama_baru.json` dengan format sama. Otomatis ke-load + masuk tournament. Bisa di-`/league off` kalau jelek.
+
+### Guardrail (anti chasing noise)
+- `minTradesToJudge: 30` — ga promote sebelum 30 trade (variance memecoin tinggi)
+- Margin +1% avg PnL — challenger harus menang JELAS, bukan tipis
+- Storage terpisah — tournament ga ganggu champion paper trading
+
+---
+
 ## 🛠️ NEXT IDEAS (Belum Implement)
 
 - Performance dashboard (Telegram visual chart)

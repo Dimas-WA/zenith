@@ -140,6 +140,21 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 19 — PRESET LEAGUE (Paper Strategy Tournament)
+
+- [x] Ide user: multi-preset league mode (kaya Cronos) — paper tournament, live 1 champion
+- [x] 5 presets: default, zenith, hybrid, bengbeng_tweak, evilpanda_tweak (presets/*.json, lean override)
+- [x] league.js — engine self-contained, STORAGE TERPISAH (league-*.json) → zero regresi ke paper-*.json
+- [x] Deterministic wouldDeploy (no LLM = no token cost buat challenger)
+- [x] Per-preset exit rules (SL/TP/OOR beda-beda), bin-based PnL sama kaya paper-trading
+- [x] Leaderboard: WR, avg PnL, fees per preset, ranked
+- [x] Auto-promote: challenger > champion (avg PnL +1% margin) + min 30 trade → notif Telegram confirm
+- [x] AI evolve mode = HYBRID: paper auto, promote ke LIVE WAJIB confirm user (tombol Telegram)
+- [x] Commands: /league, /league on|off <preset>, /promote <name> (REPL + Telegram + bot menu)
+- [x] Promotion callback (✅ Promote / ❌ Tolak)
+- [x] Wired: screening (runTournament after candidates), management (updateTournament + promo notif)
+- [x] Hook DRY_RUN only — live ga jalanin tournament
+
 ### Session 18 — Retroactive Loss Cooldown (DATBIHGAH bulletproof)
 
 - [x] AKAR: cooldown_until cuma ke-set buat close BARU. Entry DATBIHGAH lama (loss sebelum fix) ga punya cooldown_until → lolos filter
