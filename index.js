@@ -560,6 +560,9 @@ export async function runScreeningCycle({ silent = false } = {}) {
     const candidates = (topCandidates?.candidates || topCandidates?.pools || []).slice(0, 10);
     const earlyFilteredExamples = topCandidates?.filtered_examples || [];
 
+    // Auto-suggest a top LPer to learn from, drawn from this cycle's best pool (throttled).
+    void maybeSuggestWalletFromScreening(candidates);
+
     const allCandidates = [];
     for (const pool of candidates) {
       const mint = pool.base?.mint;
@@ -1593,6 +1596,50 @@ async function drainTelegramQueue() {
   }
 }
 
+// ─── Auto-suggest a wallet to learn from, from the screening cycle ──
+let _lastWalletSuggestAt = 0;
+const _suggestedWallets = new Set();
+const WALLET_SUGGEST_COOLDOWN_MS = 6 * 60 * 60 * 1000; // at most once / 6h — no spam
+
+async function maybeSuggestWalletFromScreening(candidates) {
+  try {
+    if (!telegramEnabled()) return;
+    if (Date.now() - _lastWalletSuggestAt < WALLET_SUGGEST_COOLDOWN_MS) return;
+    const pools = (candidates || []).map((c) => ({ addr: c?.pool, name: c?.name })).filter((p) => p.addr);
+    if (!pools.length) return;
+
+    // Look at the top 1–2 candidate pools for a strong LPer to learn from.
+    for (const pool of pools.slice(0, 2)) {
+      const study = await studyTopLPers({ pool_address: pool.addr, limit: 5 }).catch(() => null);
+      const lpers = Array.isArray(study?.lpers) ? study.lpers : [];
+      const pick = lpers
+        .filter((l) => l?.owner && !_suggestedWallets.has(l.owner))
+        .filter((l) => (l.summary?.total_positions ?? 0) >= 3 && (l.summary?.avg_open_pnl_pct ?? 0) > 0)
+        .sort((a, b) => (b.summary?.avg_open_pnl_pct ?? 0) - (a.summary?.avg_open_pnl_pct ?? 0))[0];
+      if (!pick) continue;
+
+      _suggestedWallets.add(pick.owner);
+      _lastWalletSuggestAt = Date.now();
+      await sendMessageWithButtons(
+        [
+          `🛰️ AUTO-SUGGEST — pool ${pool.name || pool.addr.slice(0, 8)} lagi bagus.`,
+          `Top LPer di situ: ${pick.owner_short || pick.owner.slice(0, 8)}…`,
+          `PnL ~${pick.summary?.avg_open_pnl_pct ?? "?"}% | hold ~${pick.summary?.avg_hold_hours ?? "?"}h | ${pick.summary?.total_positions ?? "?"} posisi`,
+          ``,
+          `Mau gua pelajari playstyle-nya?`,
+        ].join("\n"),
+        [[
+          { text: "📚 Study wallet ini", callback_data: `studyw:${pick.owner}` },
+          { text: "🧪 Langsung jadiin preset", callback_data: `makew:${pick.owner}` },
+        ]]
+      ).catch(() => {});
+      return; // one suggestion per cycle
+    }
+  } catch (e) {
+    log("wallet_suggest_warn", `auto-suggest failed: ${e.message}`);
+  }
+}
+
 function formatWalletStudy(res) {
   if (!res || res.error) return `❌ ${res?.error || "Gagal mempelajari wallet."}`;
   const p = res.profile;
@@ -1797,6 +1844,18 @@ async function telegramHandler(msg) {
     await answerCallbackQuery(msg.callbackQueryId, "Mempelajari…").catch(() => {});
     const res = await studyWallet({ wallet: addr }).catch((e) => ({ error: e.message }));
     await sendMessage(formatWalletStudy(res)).catch(() => {});
+    return;
+  }
+  if (msg?.isCallback && text.startsWith("makew:")) {
+    const addr = text.slice("makew:".length);
+    await answerCallbackQuery(msg.callbackQueryId, "Membuat preset…").catch(() => {});
+    const study = await studyWallet({ wallet: addr }).catch((e) => ({ error: e.message }));
+    if (study?.error || !study?.profile?.enough_data) {
+      await sendMessage(`❌ ${study?.error || study?.profile?.message || "Data wallet tidak cukup."}`).catch(() => {});
+      return;
+    }
+    const built = makePresetFromProfile(study.profile, { baseline: "zenith" });
+    await sendMessage(formatPresetResult(built, study.profile)).catch(() => {});
     return;
   }
   if (text === "/papercloseall") {
