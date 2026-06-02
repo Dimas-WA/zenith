@@ -17,6 +17,6 @@
     "requireBullishSupertrend": true,
     "requireMomentumNotBearish": true
   },
-  "deploy": { "mode": "single", "binsBelow": 45, "binsAbove": 0 },
+  "deploy": { "mode": "single", "binsBelow": 45, "binsAbove": 0, "budgetSol": 12, "deployAmountSol": 1.5, "maxDeployAmount": 2.0, "positionSizePct": 0.16, "maxPositions": 6, "minSolToOpen": 1.0 },
   "exit": { "stopLossPct": -12, "takeProfitPct": 8, "oorWaitMinutes": 30 }
 }

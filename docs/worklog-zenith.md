@@ -140,6 +140,17 @@
 - [x] Moved /paper /performance /help /config /start BEFORE busy check (instant response)
 - [x] Removed duplicate Telegram handlers
 
+### Session 20 — Per-Preset Balance (jangan campur)
+
+- [x] User catch: tiap preset harus punya BALANCE SENDIRI, ga campur — min deploy SOL juga beda
+- [x] Tiap preset.deploy: budgetSol, deployAmountSol, maxDeployAmount, positionSizePct, maxPositions, minSolToOpen
+- [x] getPresetBalance(): budget + realized PnL - deployed, PER PRESET (terpisah)
+- [x] presetDeployAmount(): sizing per preset (mirror computeDeployAmount config)
+- [x] Enforce maxPositions + minSolToOpen per preset
+- [x] Leaderboard ranking by ROI% (return on each preset's OWN budget), bukan avg PnL
+- [x] Promote margin: ROI gap > 2% (bukan avg PnL 1%)
+- [x] Sizing tiap preset beda: default 0.5/3pos, hybrid 1.5/6pos, evilpanda 1.0/6pos, dll
+
 ### Session 19 — PRESET LEAGUE (Paper Strategy Tournament)
 
 - [x] Ide user: multi-preset league mode (kaya Cronos) — paper tournament, live 1 champion

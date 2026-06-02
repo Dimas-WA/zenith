@@ -107,6 +107,32 @@ function passesPreset(candidate, preset) {
   return { ok: true };
 }
 
+// ─── Per-preset balance + sizing ─────────────────────────────
+// Each preset runs its OWN virtual wallet (same starting budget, own sizing).
+function getPresetBalance(presetName, preset, openPositions, history) {
+  const d = preset.deploy || {};
+  const budget = d.budgetSol ?? 12;
+  const deployed = openPositions
+    .filter(p => p.preset === presetName && !p.closed)
+    .reduce((s, p) => s + (p.amount_sol || 0), 0);
+  const realizedPnlSol = history
+    .filter(h => h.preset === presetName)
+    .reduce((s, h) => s + ((h.est_total_pnl_usd || 0) / (h.entry_sol_price || 82)), 0);
+  const available = budget + realizedPnlSol - deployed;
+  return { budget, deployed, realizedPnlSol, available };
+}
+
+// computeDeployAmount per preset (mirror config.js logic)
+function presetDeployAmount(preset, availableSol) {
+  const d = preset.deploy || {};
+  const floor = d.deployAmountSol ?? 0.5;
+  const ceil = d.maxDeployAmount ?? 2.0;
+  const pct = d.positionSizePct ?? 0.3;
+  const reserve = 0.3;
+  const deployable = Math.max(0, availableSol - reserve);
+  return Math.min(ceil, Math.max(floor, deployable * pct));
+}
+
 // ─── Tournament: evaluate all enabled presets against candidates ──
 /**
  * @param {Array} candidates - snapshot objects { pool_address, pool_name, base_mint,
@@ -120,14 +146,24 @@ export function runTournament(candidates, { solPrice = 82 } = {}) {
     if (!league.enabled) return;
     const presets = loadPresets();
     const positions = loadPositions();
+    const history = loadHistory();
     let opened = 0;
 
     for (const name of Object.keys(presets)) {
       if (!league.presetEnabled[name]) continue;
       const preset = presets[name];
+      const maxPos = preset.deploy?.maxPositions ?? 6;
+      const minSolToOpen = preset.deploy?.minSolToOpen ?? 0.55;
 
       // one open position per preset per pool (no duplicate)
       const openForPreset = positions.filter(p => p.preset === name && !p.closed);
+      // enforce per-preset max positions
+      if (openForPreset.length >= maxPos) continue;
+
+      // per-preset own balance — don't mix presets
+      const bal = getPresetBalance(name, preset, positions, history);
+      if (bal.available < minSolToOpen) continue; // not enough virtual SOL for this preset
+      const amountSol = Number(presetDeployAmount(preset, bal.available).toFixed(3));
 
       for (const c of candidates) {
         if (!c?.pool_address) continue;
@@ -153,7 +189,7 @@ export function runTournament(candidates, { solPrice = 82 } = {}) {
           upper_bin: c.active_bin + binsAbove,
           bins_above: binsAbove,
           current_active_bin: c.active_bin,
-          amount_sol: 1.0,
+          amount_sol: amountSol,
           exit: preset.exit || { stopLossPct: -20, takeProfitPct: 8, oorWaitMinutes: 30 },
           deployed_at: new Date().toISOString(),
           closed: false,
@@ -280,7 +316,8 @@ export function getLeaderboard() {
       label: presets[name].label || name,
       enabled: !!league.presetEnabled[name],
       is_champion: league.champion === name,
-      closed: 0, wins: 0, losses: 0, total_pnl_pct: 0, total_fees_usd: 0,
+      budget_sol: presets[name].deploy?.budgetSol ?? 12,
+      closed: 0, wins: 0, losses: 0, total_pnl_pct: 0, total_fees_usd: 0, realized_pnl_sol: 0,
       open: 0,
     };
   }
@@ -291,6 +328,7 @@ export function getLeaderboard() {
     if (h.est_total_pnl_pct > 0) s.wins++; else s.losses++;
     s.total_pnl_pct += h.est_total_pnl_pct || 0;
     s.total_fees_usd += h.est_fees_usd || 0;
+    s.realized_pnl_sol += (h.est_total_pnl_usd || 0) / (h.entry_sol_price || 82);
   }
   for (const p of open) {
     if (!p.closed && stats[p.preset]) stats[p.preset].open++;
@@ -301,21 +339,26 @@ export function getLeaderboard() {
     win_rate: s.closed > 0 ? Number((s.wins / s.closed * 100).toFixed(1)) : null,
     avg_pnl_pct: s.closed > 0 ? Number((s.total_pnl_pct / s.closed).toFixed(2)) : null,
     total_fees_usd: Number(s.total_fees_usd.toFixed(2)),
+    // ROI = realized PnL vs own budget (each preset has SEPARATE balance)
+    balance_sol: Number((s.budget_sol + s.realized_pnl_sol).toFixed(3)),
+    roi_pct: Number((s.realized_pnl_sol / s.budget_sol * 100).toFixed(2)),
   }));
-  // rank by avg_pnl_pct (only those with trades), then win_rate
-  rows.sort((a, b) => (b.avg_pnl_pct ?? -999) - (a.avg_pnl_pct ?? -999));
+  // rank by ROI (realized return on each preset's own budget)
+  rows.sort((a, b) => (b.roi_pct ?? -999) - (a.roi_pct ?? -999));
   return { champion: league.champion, minTradesToJudge: league.minTradesToJudge, rows };
 }
 
 export function formatLeaderboard() {
   const lb = getLeaderboard();
-  const lines = [`🏆 PRESET LEAGUE — champion: ${lb.champion}`, `(min ${lb.minTradesToJudge} trade buat dinilai)`, ""];
+  const lines = [`🏆 PRESET LEAGUE — champion: ${lb.champion}`, `(modal terpisah ${lb.rows[0]?.budget_sol ?? 12} SOL/preset | min ${lb.minTradesToJudge} trade)`, ""];
   for (const r of lb.rows) {
     const crown = r.is_champion ? "👑" : (r.enabled ? "  " : "🚫");
-    const perf = r.closed > 0
-      ? `${r.win_rate}% WR | avg ${r.avg_pnl_pct}% | ${r.closed} closed | ${r.open} open | fees $${r.total_fees_usd}`
-      : `belum ada trade | ${r.open} open`;
-    lines.push(`${crown} ${r.preset} — ${perf}`);
+    if (r.closed > 0) {
+      lines.push(`${crown} ${r.preset}`);
+      lines.push(`     ROI ${r.roi_pct >= 0 ? "+" : ""}${r.roi_pct}% | bal ${r.balance_sol} SOL | ${r.win_rate}% WR (${r.wins}/${r.closed}) | open ${r.open} | fees $${r.total_fees_usd}`);
+    } else {
+      lines.push(`${crown} ${r.preset} — belum ada trade | open ${r.open} | bal ${r.balance_sol} SOL`);
+    }
   }
   return lines.join("\n");
 }
@@ -332,11 +375,11 @@ function maybeProposePromotion() {
   const challengers = lb.rows.filter(r =>
     r.preset !== lb.champion && r.enabled && r.closed >= lb.minTradesToJudge
   );
-  const best = challengers[0]; // already sorted by avg_pnl_pct
+  const best = challengers[0]; // already sorted by roi_pct
   if (!best) return null;
 
-  // must beat champion on avg PnL by a clear margin
-  if ((best.avg_pnl_pct ?? -999) > (champ.avg_pnl_pct ?? -999) + 1.0) {
+  // must beat champion on ROI by a clear margin (>2% ROI gap)
+  if ((best.roi_pct ?? -999) > (champ.roi_pct ?? -999) + 2.0) {
     const key = `${best.preset}:${best.closed}`;
     if (_lastPromotionProposal === key) return null; // don't spam same proposal
     _lastPromotionProposal = key;
