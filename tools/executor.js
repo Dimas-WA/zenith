@@ -14,7 +14,7 @@ import { studyTopLPers } from "./study.js";
 import { studyWallet } from "./wallet-study.js";
 import { makePresetFromProfile } from "./wallet-to-preset.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
-import { setPositionInstruction } from "../state.js";
+import { setPositionInstruction, getTrackedPositions } from "../state.js";
 
 import { getPoolMemory, addPoolNote } from "../pool-memory.js";
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
@@ -22,7 +22,8 @@ import { addToBlacklist, removeFromBlacklist, listBlacklist } from "../token-bla
 import { blockDev, unblockDev, listBlockedDevs } from "../dev-blocklist.js";
 import { addSmartWallet, removeSmartWallet, listSmartWallets, checkSmartWalletsOnPool } from "../smart-wallets.js";
 import { getTokenInfo, getTokenHolders, getTokenNarrative } from "./token.js";
-import { config, reloadScreeningThresholds, MIN_SAFE_BINS_BELOW } from "../config.js";
+import { config, reloadScreeningThresholds, MIN_SAFE_BINS_BELOW, computeDeployAmount } from "../config.js";
+import { getPositionSizeMultiplier } from "../risk-score.js";
 import { getRecentDecisions } from "../decision-log.js";
 import { listProviders as _listProviders } from "../providers.js";
 import { isCircuitTripped, getCircuitStatus, resetCircuit, tripCircuit } from "../circuit-breaker.js";
@@ -217,6 +218,7 @@ function normalizeConfigValue(key, value) {
     "solMode",
     "darwinEnabled",
     "lpAgentRelayEnabled",
+    "ilVolatilityHaircut",
   ]);
   const arrayKeys = new Set(["allowedLaunchpads", "blockedLaunchpads"]);
   const stringKeys = new Set([
@@ -469,6 +471,8 @@ const toolMap = {
       // risk
       maxPositions: ["risk", "maxPositions"],
       maxDeployAmount: ["risk", "maxDeployAmount"],
+      maxPositionPctOfBankroll: ["risk", "maxPositionPctOfBankroll"],
+      ilVolatilityHaircut: ["risk", "ilVolatilityHaircut"],
       // schedule
       managementIntervalMin: ["schedule", "managementIntervalMin"],
       screeningIntervalMin: ["schedule", "screeningIntervalMin"],
@@ -780,6 +784,75 @@ export async function executeTool(name, args) {
 /**
  * Run safety checks before executing write operations.
  */
+/**
+ * Volatility → IL haircut. Higher volatility ≈ higher impermanent-loss exposure,
+ * so shrink position size. Returns a 0..1 multiplier.
+ */
+function getVolatilityHaircut(volatility) {
+  if (config.risk.ilVolatilityHaircut === false) return 1;
+  const v = Number(volatility);
+  if (!Number.isFinite(v) || v <= 0) return 1;
+  if (v <= 2) return 1.0;
+  if (v <= 3.5) return 0.8;
+  if (v <= 5) return 0.65;
+  return 0.5;
+}
+
+/**
+ * IL-aware position sizing — hard-enforced ceiling for a single deploy.
+ *
+ *   sized    = computeDeployAmount(available) × riskMultiplier × volatilityHaircut
+ *   enforced = clamp(sized, floor=minDeploy, ceil=min(15% bankroll, maxDeployAmount))
+ *
+ * Where bankroll = available wallet SOL + SOL already locked in open positions.
+ * Returns { amount, skip, reason, note }.
+ */
+async function computeIlAwareMaxDeploy(args) {
+  let availableSol = 0;
+  try {
+    const bal = await getWalletBalances();
+    availableSol = Number(bal?.sol) || 0;
+  } catch { /* best-effort */ }
+
+  let deployedSol = 0;
+  try {
+    const tracked = getTrackedPositions(true) || {};
+    deployedSol = Object.values(tracked).reduce((s, p) => s + (Number(p?.amount_sol) || 0), 0);
+  } catch { /* ignore */ }
+
+  const bankroll = availableSol + deployedSol;
+
+  // Risk-tier multiplier (LEGENDARY 1.5 … MARGINAL 0.75 … SKIP 0).
+  const riskMult = Number.isFinite(Number(args.risk_score))
+    ? getPositionSizeMultiplier(Number(args.risk_score))
+    : 1;
+  if (riskMult <= 0) {
+    return { skip: true, reason: `risk_score ${args.risk_score} falls in SKIP tier — do not deploy` };
+  }
+  const volHaircut = getVolatilityHaircut(args.volatility);
+
+  const pct = config.risk.maxPositionPctOfBankroll ?? 0.15;
+  const hardCap = bankroll > 0 ? bankroll * pct : Infinity;
+  const base = computeDeployAmount(availableSol);
+  const minDeploy = process.env.DRY_RUN === "true" ? 0.01 : Math.max(0.1, config.management.deployAmountSol);
+
+  // Respect the bankroll cap FIRST, then scale for conviction & IL so the
+  // volatility haircut stays visible (otherwise a large base hides it).
+  const ceil = Math.min(hardCap, config.risk.maxDeployAmount);
+  const capped = Math.min(base, ceil);
+  let amount = capped * riskMult * volHaircut;
+  amount = Math.min(amount, ceil); // riskMult > 1 (LEGENDARY) must not breach the cap
+  // Floor wins for small bankrolls (can't always honor the % cap).
+  if (amount < minDeploy) amount = minDeploy;
+  amount = parseFloat(amount.toFixed(3));
+
+  return {
+    amount,
+    bankroll: parseFloat(bankroll.toFixed(3)),
+    note: `bankroll ${bankroll.toFixed(2)} SOL, cap${Math.round(pct * 100)}% ${Number.isFinite(hardCap) ? hardCap.toFixed(2) : "∞"}, riskMult ${riskMult}, volHaircut ${volHaircut}`,
+  };
+}
+
 async function runSafetyChecks(name, args) {
   switch (name) {
     case "deploy_position": {
@@ -920,12 +993,26 @@ async function runSafetyChecks(name, args) {
       }
 
       // Check amount limits
-      const amountY = deployAmountY;
+      let amountY = deployAmountY;
       if (!Number.isFinite(amountY) || amountY <= 0) {
         return {
           pass: false,
           reason: `Must provide a positive SOL amount (amount_y).`,
         };
+      }
+
+      // ── IL-aware position sizing (hard-enforced) ──────────────
+      // "IL is manageable with position sizing" — cap each position at a % of
+      // total bankroll and shrink size for risky/volatile (high-IL) pools.
+      const sizing = await computeIlAwareMaxDeploy(args);
+      if (sizing.skip) {
+        return { pass: false, reason: `IL-aware sizing: ${sizing.reason}` };
+      }
+      if (Number.isFinite(sizing.amount) && amountY > sizing.amount + 1e-9) {
+        log("safety", `IL-aware sizing: clamped deploy ${amountY} → ${sizing.amount} SOL (${sizing.note})`);
+        amountY = sizing.amount;
+        args.amount_y = sizing.amount;
+        if (args.amount_sol != null) args.amount_sol = sizing.amount;
       }
 
       const isDryRun = process.env.DRY_RUN === "true";

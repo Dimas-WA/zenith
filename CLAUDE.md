@@ -86,6 +86,8 @@ Sets defined in `agent.js:6-7`. If you add a tool, also add it to the relevant s
 | deployAmountSol | management | 0.5 |
 | maxDeployAmount | risk | 50 |
 | maxPositions | risk | 3 |
+| maxPositionPctOfBankroll | risk | 0.15 (IL guard: 1 position ≤ 15% of bankroll) |
+| ilVolatilityHaircut | risk | true (shrink size for high-volatility/high-IL pools) |
 | gasReserve | management | 0.2 |
 | positionSizePct | management | 0.35 |
 | minSolToOpen | management | 0.55 |
@@ -106,6 +108,24 @@ Sets defined in `agent.js:6-7`. If you add a tool, also add it to the relevant s
 4. **Learn**: `evolveThresholds()` runs on performance data → updates config.screening → persists to user-config.json
 
 ---
+
+## IL-Aware Position Sizing (executor.js)
+
+"IL is manageable with position sizing." Hard-enforced in `runSafetyChecks` for `deploy_position`
+(clamps `args.amount_y` down — the LLM cannot override):
+
+```
+bankroll = available wallet SOL + Σ open-position amount_sol (from state.js getTrackedPositions)
+ceil     = min(bankroll × maxPositionPctOfBankroll, maxDeployAmount)
+capped   = min(computeDeployAmount(available), ceil)
+amount   = min(capped × riskMultiplier × volatilityHaircut, ceil)   // ≥ floor for tiny wallets
+```
+
+- `riskMultiplier` ← `getPositionSizeMultiplier(risk_score)` (risk-score.js): LEGENDARY 1.5 … MARGINAL 0.75 … SKIP 0.
+  `risk_score` in the SKIP tier → deploy is **rejected**.
+- `volatilityHaircut` (when `ilVolatilityHaircut` true): vol ≤2 →1.0, ≤3.5 →0.8, ≤5 →0.65, else →0.5.
+- The bankroll cap is the final ceiling — even LEGENDARY (1.5×) can't breach `maxPositionPctOfBankroll`.
+- Applied **after** the cap so the volatility haircut stays visible (a large base would otherwise hide it).
 
 ## Screener Safety Checks (executor.js)
 

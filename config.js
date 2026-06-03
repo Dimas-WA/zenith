@@ -57,6 +57,8 @@ export const config = {
   risk: {
     maxPositions:    u.maxPositions    ?? 3,
     maxDeployAmount: u.maxDeployAmount ?? 50,
+    maxPositionPctOfBankroll: u.maxPositionPctOfBankroll ?? 0.15, // IL guard: 1 position ≤ 15% of total bankroll
+    ilVolatilityHaircut:      u.ilVolatilityHaircut      ?? true, // shrink size for high-volatility (high-IL) pools
   },
 
   // ─── Pool Screening Thresholds ───────────
