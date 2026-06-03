@@ -272,6 +272,31 @@ copied (their risk tolerance ≠ yours).
 
 ---
 
+## Deterministic Champion (deterministic-champion.js)
+
+Goal: **paper mirrors live**. The LLM is non-deterministic (two calls → two answers), so an
+LLM-driven paper run never reliably predicts the LLM-driven live run. Running the champion by
+RULES makes the only paper↔live difference the `DRY_RUN` flag (skip the on-chain tx).
+
+Gated by `config.flags.deterministicChampion` (default **false** → current LLM behaviour).
+Toggle via `/setcfg deterministicChampion true`.
+
+When ON:
+- **Screening** (`runScreeningCycle`): `pickDeterministicCandidate(snapshots)` ranks the already-
+  filtered candidates (risk_score ≥ 35, momentum not bearish, supertrend gate) by conviction,
+  `deterministicDeployArgs()` computes bins_below via the volatility formula, then `deploy_position`
+  runs (same safety checks + IL-aware sizing). No LLM `agentLoop`.
+- **Management** (`runManagementCycle`): exits are *already* rule-based (`actionMap`). When ON, CLOSE/
+  CLAIM are executed directly via `executeTool`; only INSTRUCTION (natural-language note conditions)
+  still calls the LLM.
+- LLM stays available for the GENERAL chat role.
+
+Pure functions are unit-testable: `pickDeterministicCandidate`, `computeBinsBelow`,
+`deterministicDeployArgs`, `checkDeterministicExit`, `planDeterministicExits`.
+
+Bonus: per the league data, deterministic presets (`default` +$4.35) outperformed the LLM champion
+(−$92), and the LLM hot-loop is the main API-cost driver even in DRY_RUN. This flag cuts both.
+
 ## Darwin Signal Weights (signal-weights.js)
 
 `recalculateWeights()` boosts/decays screening signal weights by predictive lift (winners vs losers).

@@ -219,6 +219,7 @@ function normalizeConfigValue(key, value) {
     "darwinEnabled",
     "lpAgentRelayEnabled",
     "ilVolatilityHaircut",
+    "deterministicChampion",
   ]);
   const arrayKeys = new Set(["allowedLaunchpads", "blockedLaunchpads"]);
   const stringKeys = new Set([
@@ -473,6 +474,7 @@ const toolMap = {
       maxDeployAmount: ["risk", "maxDeployAmount"],
       maxPositionPctOfBankroll: ["risk", "maxPositionPctOfBankroll"],
       ilVolatilityHaircut: ["risk", "ilVolatilityHaircut"],
+      deterministicChampion: ["flags", "deterministicChampion"],
       // schedule
       managementIntervalMin: ["schedule", "managementIntervalMin"],
       screeningIntervalMin: ["schedule", "screeningIntervalMin"],

@@ -54,6 +54,12 @@ function nonEmptyString(...values) {
 
 export const config = {
   // ─── Risk Limits ─────────────────────────
+  flags: {
+    // When true, the champion deploys/manages by RULES (no LLM in the hot loop) so paper
+    // mirrors live. LLM stays available for chat. Default false = current LLM behaviour.
+    deterministicChampion: u.deterministicChampion ?? false,
+  },
+
   risk: {
     maxPositions:    u.maxPositions    ?? 3,
     maxDeployAmount: u.maxDeployAmount ?? 50,

@@ -28,6 +28,7 @@ import {
 import { studyWallet, analyzeWalletJson } from "./tools/wallet-study.js";
 import { makePresetFromProfile } from "./tools/wallet-to-preset.js";
 import { studyTopLPers } from "./tools/study.js";
+import { isDeterministicChampion, pickDeterministicCandidate, deterministicDeployArgs, planDeterministicExits } from "./deterministic-champion.js";
 import { generateBriefing } from "./briefing.js";
 import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
@@ -409,6 +410,30 @@ export async function runManagementCycle({ silent = false } = {}) {
       return a.action !== "STAY";
     });
 
+    // Deterministic champion: execute CLOSE/CLAIM directly (no LLM). The decisions are
+    // already rule-based above — the LLM was only ever a translator. Only INSTRUCTION
+    // (natural-language note conditions) still needs the LLM.
+    if (actionPositions.length > 0 && isDeterministicChampion()) {
+      const detResults = [];
+      const llmInstructionPositions = [];
+      for (const p of actionPositions) {
+        const act = actionMap.get(p.position);
+        if (act.action === "CLOSE") {
+          const r = await executeTool("close_position", { position_address: p.position });
+          detResults.push(`${p.pair}: ${(r?.error || r?.blocked) ? `CLOSE gagal (${r.reason || r.error})` : "CLOSED"} — ${act.reason || act.rule || "exit"}`);
+        } else if (act.action === "CLAIM") {
+          const r = await executeTool("claim_fees", { position_address: p.position });
+          detResults.push(`${p.pair}: ${r?.error ? "CLAIM gagal" : "CLAIMED fees"}`);
+        } else if (act.action === "INSTRUCTION") {
+          llmInstructionPositions.push(p);
+        }
+      }
+      if (detResults.length > 0) mgmtReport += `\n\n${detResults.join("\n")}`;
+      // Hand only INSTRUCTION positions to the LLM (rare).
+      actionPositions.length = 0;
+      actionPositions.push(...llmInstructionPositions);
+    }
+
     if (actionPositions.length > 0) {
       log("cron", `Management: ${actionPositions.length} action(s) needed — invoking LLM [model: ${config.llm.managementModel}]`);
 
@@ -771,35 +796,38 @@ export async function runScreeningCycle({ silent = false } = {}) {
       return block;
     });
 
+    // Build deterministic candidate snapshots — used by the League tournament AND the
+    // deterministic champion deploy path.
+    const snapshots = passing.map(({ pool, sw, ti }, i) => {
+      const activeBin = activeBinResults[i]?.status === "fulfilled" ? activeBinResults[i].value?.binId : null;
+      const mtf = i < 5 && mtfResults[i]?.status === "fulfilled" ? mtfResults[i].value : null;
+      const st = i < 5 && supertrendResults[i]?.status === "fulfilled" ? supertrendResults[i].value : null;
+      const mtfOverall = String(mtf?.overall || "").toLowerCase();
+      return {
+        pool_address: pool.pool,
+        pool_name: pool.name,
+        base_mint: pool.base?.mint || pool.base_mint || ti?.mint || null,
+        mcap: pool.mcap ?? null,
+        tvl: pool.tvl ?? pool.active_tvl ?? null,
+        volume: pool.volume_window ?? null,
+        organic: pool.organic_score ?? null,
+        holders: ti?.holders ?? null,
+        top10: ti?.audit?.top_holders_pct ?? null,
+        bots: ti?.audit?.bot_holders_pct ?? null,
+        fee_tvl: pool.fee_active_tvl_ratio ?? null,
+        volatility: pool.volatility ?? null,
+        age_hours: pool.token_age_hours ?? null,
+        active_bin: activeBin,
+        bin_step: pool.bin_step ?? 100,
+        risk_score: pool.risk_score ?? null,
+        mtf_bearish: mtfOverall.includes("bearish") || mtf?.confirmed === false,
+        supertrend_bullish: st?.bullish === true,
+      };
+    });
+
     // ─── Preset League: run paper tournament (dry run only, deterministic, no LLM cost) ──
     if (process.env.DRY_RUN === "true") {
       try {
-        const snapshots = passing.map(({ pool, sw, ti }, i) => {
-          const activeBin = activeBinResults[i]?.status === "fulfilled" ? activeBinResults[i].value?.binId : null;
-          const mtf = i < 5 && mtfResults[i]?.status === "fulfilled" ? mtfResults[i].value : null;
-          const st = i < 5 && supertrendResults[i]?.status === "fulfilled" ? supertrendResults[i].value : null;
-          const mtfOverall = String(mtf?.overall || "").toLowerCase();
-          return {
-            pool_address: pool.pool,
-            pool_name: pool.name,
-            base_mint: pool.base?.mint || pool.base_mint || ti?.mint || null,
-            mcap: pool.mcap ?? null,
-            tvl: pool.tvl ?? pool.active_tvl ?? null,
-            volume: pool.volume_window ?? null,
-            organic: pool.organic_score ?? null,
-            holders: ti?.holders ?? null,
-            top10: ti?.audit?.top_holders_pct ?? null,
-            bots: ti?.audit?.bot_holders_pct ?? null,
-            fee_tvl: pool.fee_active_tvl_ratio ?? null,
-            volatility: pool.volatility ?? null,
-            age_hours: pool.token_age_hours ?? null,
-            active_bin: activeBin,
-            bin_step: pool.bin_step ?? 100,
-            risk_score: pool.risk_score ?? null,
-            mtf_bearish: mtfOverall.includes("bearish") || mtf?.confirmed === false,
-            supertrend_bullish: st?.bullish === true,
-          };
-        });
         const solPrice = currentBalance.sol_price || 82;
         runTournament(snapshots, { solPrice });
       } catch (e) {
@@ -811,6 +839,10 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
     let deployAttempted = false;
     let deploySucceeded = false;
+    if (isDeterministicChampion()) {
+      // Deploy by rules — no LLM. Paper mirrors live (only DRY_RUN differs).
+      screenReport = await runDeterministicScreenDeploy(snapshots, baseDeployAmount, prePositions);
+    } else {
     const { content } = await agentLoop(`
 SCREENING CYCLE
 ${strategyBlock}
@@ -922,6 +954,7 @@ IMPORTANT:
         summary: deployAttempted ? "Deploy attempt did not succeed" : "No successful deploy in screening cycle",
         reason: stripThink(content).slice(0, 500),
       });
+    }
     }
   } catch (error) {
     log("cron_error", `Screening cycle failed: ${error.message}`);
@@ -1661,6 +1694,45 @@ async function applyChampionToConfig(presetName, reason) {
     log("league", `applyChampionToConfig error: ${e.message}`);
     return null;
   }
+}
+
+// Deterministic champion: pick best candidate by rules and deploy via the executor
+// (which enforces all safety checks + IL-aware sizing). Returns a Telegram report string.
+async function runDeterministicScreenDeploy(snapshots, baseDeployAmount, prePositions) {
+  if ((prePositions?.total_positions ?? 0) >= config.risk.maxPositions) {
+    return `⛔ NO DEPLOY (rules) — sudah ${prePositions.total_positions}/${config.risk.maxPositions} posisi (max).`;
+  }
+  const candidate = pickDeterministicCandidate(snapshots);
+  if (!candidate) {
+    return `⛔ NO DEPLOY (rules) — tidak ada kandidat lolos aturan deterministik.`;
+  }
+  const args = deterministicDeployArgs(candidate, baseDeployAmount);
+  if (!args) {
+    return `⛔ NO DEPLOY (rules) — ${candidate.pool_name}: volatility tidak terpakai.`;
+  }
+  const result = await executeTool("deploy_position", args);
+  if (result?.blocked) {
+    appendDecision({ type: "no_deploy", actor: "DETERMINISTIC", summary: `Blocked: ${candidate.pool_name}`, reason: result.reason });
+    return `⛔ NO DEPLOY (rules) — ${candidate.pool_name} diblok safety: ${result.reason}`;
+  }
+  if (result?.error || result?.success === false) {
+    return `⛔ NO DEPLOY (rules) — ${candidate.pool_name} gagal: ${result.error || "unknown"}`;
+  }
+  appendDecision({
+    type: "deploy",
+    actor: "DETERMINISTIC",
+    summary: `Rule-based deploy: ${candidate.pool_name}`,
+    reason: `risk ${candidate.risk_score}, vol ${candidate.volatility}, bins_below ${args.bins_below}`,
+  });
+  return [
+    `🚀 DEPLOYED (rule-based champion)`,
+    ``,
+    `${candidate.pool_name}`,
+    `${candidate.pool_address}`,
+    ``,
+    `◎ ${result.amount_sol ?? args.amount_y} SOL | ${args.bins_above > 0 ? "dual" : "single-side-SOL"} | bin ${candidate.active_bin}`,
+    `bins_below ${args.bins_below} | risk ${candidate.risk_score} | vol ${candidate.volatility} | fee/TVL ${candidate.fee_tvl}`,
+  ].join("\n");
 }
 
 function formatWalletStudy(res) {
