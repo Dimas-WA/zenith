@@ -171,7 +171,7 @@ Handled directly in `index.js` (bypass LLM):
 | `/suggestwallets <pool>` | List top LPers on a pool with one-tap "Study" buttons |
 | `/leaguepos [preset]` | Open league positions grouped by preset |
 | `/setexit <preset> <sl> [tp] [oor]` | Tighten a preset's exit rules in place |
-| `/promote <preset>` | Make a preset the live champion (manual — bypasses 30-trade gate) |
+| `/promote <preset>` | Make a preset champion AND sync its exit/deploy/screening to the LIVE config (via update_config — persists, enforces safety floors). Manual — bypasses 30-trade gate. |
 | (upload `.json`) | Send a wallet-study `.json` file → profile + auto preset |
 
 Progress bar format: `[████████░░░░░░░░░░░░] 40%` (no bin numbers, no arrows)

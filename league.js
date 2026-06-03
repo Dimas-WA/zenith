@@ -444,6 +444,51 @@ export function getPendingPromotion() {
   return maybeProposePromotion();
 }
 
+/**
+ * Translate a preset into a flat `changes` object for update_config, so the
+ * champion's exit + deploy + screening settings can be applied to the LIVE config.
+ * Returns { changes, label } or null if the preset is unknown.
+ *
+ * Safety floors (e.g. binsBelow >= 35, IL position-size cap) are enforced downstream
+ * by update_config / the deploy executor — a narrow preset can't breach them live.
+ */
+export function presetToConfigChanges(presetName) {
+  const presets = loadPresets();
+  const p = presets[presetName];
+  if (!p) return null;
+
+  const changes = {};
+  const set = (key, val) => { if (val !== undefined) changes[key] = val; };
+
+  const ex = p.exit || {};
+  set("stopLossPct", ex.stopLossPct);
+  set("takeProfitPct", ex.takeProfitPct);
+  set("outOfRangeWaitMinutes", ex.oorWaitMinutes);
+
+  const d = p.deploy || {};
+  set("deployMode", d.mode);
+  set("maxPositions", d.maxPositions);
+  set("positionSizePct", d.positionSizePct);
+  set("deployAmountSol", d.deployAmountSol);
+  set("maxDeployAmount", d.maxDeployAmount);
+  set("minSolToOpen", d.minSolToOpen);
+  if (d.binsBelow !== undefined) {
+    changes.binsBelow = d.binsBelow;        // update_config clamps to >= 35 safety floor
+    changes.defaultBinsBelow = d.binsBelow;
+  }
+
+  const s = p.screening || {};
+  for (const key of [
+    "minMcap", "maxMcap", "minTvl", "minVolume", "minOrganic", "minHolders",
+    "maxTop10Pct", "maxBotHoldersPct", "minFeeActiveTvlRatio", "maxVolatility",
+    "minTokenAgeHours", "maxTokenAgeHours",
+  ]) {
+    if (s[key] !== undefined) changes[key] = s[key];
+  }
+
+  return { changes, label: p.label || presetName };
+}
+
 /** Promote a preset to champion (called on user confirm). */
 export function promoteChampion(presetName) {
   const league = loadLeague();

@@ -41,7 +41,7 @@ import { appendDecision } from "./decision-log.js";
 import { checkAllPositionWhales, pruneSnapshots } from "./whale-tracker.js";
 import { checkMultiTimeframeMomentum, formatMtfResult } from "./multi-timeframe.js";
 import { getSupertrend } from "./supertrend.js";
-import { runTournament, updateTournament, formatLeaderboard, formatLeaguePositions, getPendingPromotion, promoteChampion, setPresetEnabled, leagueReset, getChampion, updatePresetExit } from "./league.js";
+import { runTournament, updateTournament, formatLeaderboard, formatLeaguePositions, getPendingPromotion, promoteChampion, setPresetEnabled, leagueReset, getChampion, updatePresetExit, presetToConfigChanges } from "./league.js";
 import { assessMevRisk, getRecommendedPriorityFee } from "./mev-protection.js";
 import { paperUpdateAll, paperCheckExits, paperFormatStatus, paperFormatPerformance, paperGetPositions } from "./paper-trading.js";
 
@@ -1640,6 +1640,29 @@ async function maybeSuggestWalletFromScreening(candidates) {
   }
 }
 
+// Apply the champion preset's exit/deploy/screening to the LIVE config (via update_config,
+// which persists + enforces safety floors). Returns a short summary string for Telegram.
+async function applyChampionToConfig(presetName, reason) {
+  try {
+    const mapped = presetToConfigChanges(presetName);
+    if (!mapped || Object.keys(mapped.changes).length === 0) return null;
+    const result = await executeTool("update_config", { changes: mapped.changes, reason });
+    if (result?.success === false) {
+      log("league", `applyChampionToConfig failed: ${result.error || JSON.stringify(result.unknown)}`);
+      return null;
+    }
+    const c = config;
+    return [
+      `⚙️ Live config disamakan ke champion "${presetName}":`,
+      `SL ${c.management.stopLossPct}% | TP ${c.management.takeProfitPct}% | OOR ${c.management.outOfRangeWaitMinutes}m`,
+      `binsBelow ${c.strategy.defaultBinsBelow} | maxPositions ${c.risk.maxPositions} | sizePct ${c.management.positionSizePct}`,
+    ].join("\n");
+  } catch (e) {
+    log("league", `applyChampionToConfig error: ${e.message}`);
+    return null;
+  }
+}
+
 function formatWalletStudy(res) {
   if (!res || res.error) return `❌ ${res?.error || "Gagal mempelajari wallet."}`;
   const p = res.profile;
@@ -1744,6 +1767,10 @@ async function telegramHandler(msg) {
       const result = promoteChampion(target);
       await answerCallbackQuery(msg.callbackQueryId, result.ok ? "Promoted" : "Failed").catch(() => {});
       await editMessage(result.ok ? `👑 Champion baru: ${result.champion}` : `❌ ${result.error}`, msg.messageId).catch(() => {});
+      if (result.ok) {
+        const summary = await applyChampionToConfig(result.champion, `champion promoted to ${result.champion}`);
+        if (summary) await sendMessage(summary).catch(() => {});
+      }
     }
     return;
   }
@@ -1825,6 +1852,10 @@ async function telegramHandler(msg) {
   if (promoteCmd) {
     const result = promoteChampion(promoteCmd[1]);
     await sendMessage(result.ok ? `👑 Champion baru: ${result.champion}` : `❌ ${result.error}`).catch(() => {});
+    if (result.ok) {
+      const summary = await applyChampionToConfig(result.champion, `champion promoted to ${result.champion}`);
+      if (summary) await sendMessage(summary).catch(() => {});
+    }
     return;
   }
   const studyWalletCmd = text.match(/^\/studywallet\s+(\S+)$/i);
