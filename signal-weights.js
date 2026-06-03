@@ -99,6 +99,9 @@ export function recalculateWeights(perfData, cfg = {}) {
   const decayFactor   = darwin.decayFactor   ?? 0.95;
   const weightFloor   = darwin.weightFloor   ?? 0.3;
   const weightCeiling = darwin.weightCeiling ?? 2.5;
+  const perSignalCeiling = darwin.perSignalCeiling ?? {};
+  // Effective ceiling for a signal (per-signal cap overrides the global one).
+  const ceilFor = (signal) => Math.min(weightCeiling, perSignalCeiling[signal] ?? weightCeiling);
 
   const data = loadWeights();
   const weights = data.weights || { ...DEFAULT_WEIGHTS };
@@ -106,6 +109,22 @@ export function recalculateWeights(perfData, cfg = {}) {
   // Ensure all signals exist (handles new signals added after initial creation)
   for (const name of SIGNAL_NAMES) {
     if (weights[name] == null) weights[name] = 1.0;
+  }
+
+  // Pull any weight that already exceeds its (possibly newly-tightened) ceiling
+  // back down — e.g. volatility that ran away to 1.71 before a cap was set.
+  let clampedAny = false;
+  for (const name of SIGNAL_NAMES) {
+    const cap = ceilFor(name);
+    if (weights[name] > cap) {
+      log("signal_weights", `${name}: clamped ${weights[name]} -> ${cap} (per-signal ceiling)`);
+      weights[name] = cap;
+      clampedAny = true;
+    }
+  }
+  if (clampedAny) {
+    data.weights = weights;
+    saveWeights(data); // persist immediately even if this recalc later early-returns
   }
 
   // Filter to rolling window
@@ -159,7 +178,7 @@ export function recalculateWeights(perfData, cfg = {}) {
     let next = prev;
 
     if (topQuartile.has(signal)) {
-      next = Math.min(prev * boostFactor, weightCeiling);
+      next = Math.min(prev * boostFactor, ceilFor(signal));
     } else if (bottomQuartile.has(signal)) {
       next = Math.max(prev * decayFactor, weightFloor);
     }

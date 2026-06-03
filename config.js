@@ -179,6 +179,10 @@ export const config = {
     weightFloor:    u.darwinFloor       ?? 0.3,
     weightCeiling:  u.darwinCeiling     ?? 2.5,
     minSamples:     u.darwinMinSamples  ?? 10,
+    // Per-signal ceilings — keep risk signals (volatility) from running away.
+    // Their lift is direction-less (abs), so an unbounded boost makes the agent
+    // chase volatile/high-IL pools. Cap them well below the global ceiling.
+    perSignalCeiling: u.darwinPerSignalCeiling ?? { volatility: 1.3 },
   },
 
   // ─── Common Token Mints ────────────────

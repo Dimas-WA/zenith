@@ -26,6 +26,9 @@ const PRESETS_DIR = path.join(__dirname, "..", "presets");
 
 // Live executor refuses deploys with a total range below this many bins.
 const LIVE_BIN_FLOOR = 35;
+// Tightest loss a generated preset is allowed to tolerate — never copy a whale's
+// loose stop. -20% caps a single position's damage to a survivable level.
+const MAX_GENERATED_SL = -20;
 
 function loadBaselinePreset(name) {
   const file = path.join(PRESETS_DIR, `${name}.json`);
@@ -89,17 +92,26 @@ export function buildPresetFromProfile(profile, opts = {}) {
   // ── exit: hold time → oorWaitMinutes ──────────────────────────
   const medianHoldH = profile.hold_hours?.median ?? 0.5;
   // Scalpers (short holds) cut OOR fast; swing traders wait longer.
-  const oorWait = clamp(Math.round(medianHoldH * 60 * 0.5), 10, 90);
-  rationale.push(`oorWaitMinutes ${oorWait} from typical hold ~${medianHoldH}h.`);
+  // Cap at 60m — a whale's long OOR tolerance bleeds your smaller bankroll.
+  const oorWait = clamp(Math.round(medianHoldH * 60 * 0.5), 10, 60);
+  rationale.push(`oorWaitMinutes ${oorWait} from typical hold ~${medianHoldH}h (capped 60m).`);
 
   // ── exit: PnL distribution → TP / SL ──────────────────────────
   // Take profit near the wallet's typical winning magnitude; stop loss near its worst.
+  // SL is NOT copied loosely: a whale tolerates -35% drawdowns because of deep pockets —
+  // your risk tolerance differs, so cap the generated stop loss at MAX_GENERATED_SL.
   const avgPnl = profile.pnl_pct?.avg ?? 6;
   const bestPnl = profile.pnl_pct?.best ?? 10;
   const worstPnl = profile.pnl_pct?.worst ?? -15;
   const takeProfitPct = clamp(Math.round(Math.max(avgPnl * 1.5, 4)), 4, 25);
-  const stopLossPct = clamp(Math.round(Math.min(worstPnl * 1.2, -6)), -35, -6);
-  rationale.push(`TP ${takeProfitPct}% / SL ${stopLossPct}% from PnL spread (avg ${avgPnl}%, best ${bestPnl}%, worst ${worstPnl}%).`);
+  const stopLossPct = clamp(Math.round(Math.min(worstPnl * 1.2, -6)), MAX_GENERATED_SL, -6);
+  if (worstPnl * 1.2 < MAX_GENERATED_SL) {
+    warnings.push(
+      `Wallet tolerated drawdowns to ${profile.pnl_pct?.worst}% — stop loss capped at ${MAX_GENERATED_SL}% ` +
+      `(not copied loosely; your risk tolerance ≠ the wallet's).`
+    );
+  }
+  rationale.push(`TP ${takeProfitPct}% / SL ${stopLossPct}% from PnL spread (avg ${avgPnl}%, best ${bestPnl}%, worst ${worstPnl}%; SL floor ${MAX_GENERATED_SL}%).`);
 
   // ── deploy: sizing STYLE (not absolute — budget stays baseline) ─
   const consistency = profile.sizing_sol?.consistency ?? 0.5;

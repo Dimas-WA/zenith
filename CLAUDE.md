@@ -169,6 +169,9 @@ Handled directly in `index.js` (bypass LLM):
 | `/studywallet <addr>` | Study a top wallet's DLMM playstyle (Meteora DataAPI) |
 | `/makepreset <addr> [baseline]` | Generate a League preset from a wallet's playstyle |
 | `/suggestwallets <pool>` | List top LPers on a pool with one-tap "Study" buttons |
+| `/leaguepos [preset]` | Open league positions grouped by preset |
+| `/setexit <preset> <sl> [tp] [oor]` | Tighten a preset's exit rules in place |
+| `/promote <preset>` | Make a preset the live champion (manual — bypasses 30-trade gate) |
 | (upload `.json`) | Send a wallet-study `.json` file → profile + auto preset |
 
 Progress bar format: `[████████░░░░░░░░░░░░] 40%` (no bin numbers, no arrows)
@@ -249,6 +252,8 @@ correlation), and a classification (`narrow-scalper` / `narrow-ladder` / `wide-p
 - `exit.oorWaitMinutes` ← typical hold time
 - `exit.takeProfitPct` / `stopLossPct` ← realised PnL distribution
 - `deploy.positionSizePct` ← sizing **style** (consistency), NOT absolute size
+- `exit.stopLossPct` is capped at `MAX_GENERATED_SL` (-20%) and `oorWaitMinutes` at 60m — a whale's loose
+  stop / long OOR tolerance is **not** copied (their deep pockets ≠ yours). Use `/setexit` to retune later.
 
 Screening filters (mcap/tvl/organic) are **inherited from a baseline preset** (default `zenith`) — they
 aren't observable from PnL data, so they're not invented. Absolute position size is intentionally not
@@ -266,6 +271,17 @@ copied (their risk tolerance ≠ yours).
 (`downloadTelegramFile` in telegram.js; non-text messages now pass the poll filter).
 
 ---
+
+## Darwin Signal Weights (signal-weights.js)
+
+`recalculateWeights()` boosts/decays screening signal weights by predictive lift (winners vs losers).
+Caveat: `volatility` is **not** in `HIGHER_IS_BETTER`, so its lift is direction-less (`abs()`) — it can run
+away (e.g. → 1.71) and nudge the agent toward volatile/high-IL pools.
+
+Guard: `config.darwin.perSignalCeiling` (default `{ volatility: 1.3 }`) caps risk signals well below the
+global `weightCeiling` (2.5). On recalc, any weight above its per-signal ceiling is clamped down and
+persisted immediately (even if that recalc later early-returns for low samples). Override via
+`darwinPerSignalCeiling` in user-config.json.
 
 ## HiveMind
 

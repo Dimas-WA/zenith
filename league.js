@@ -467,6 +467,48 @@ export function setPresetEnabled(presetName, enabled) {
   return { ok: true, preset: presetName, enabled: !!enabled };
 }
 
+/**
+ * Update a preset's exit rules (stop loss / take profit / OOR wait) in place.
+ * Lets you tighten a too-loose learned preset without regenerating it.
+ * @param {string} name
+ * @param {{stopLossPct?:number, takeProfitPct?:number, oorWaitMinutes?:number}} exit
+ */
+export function updatePresetExit(name, exit = {}) {
+  const file = path.join(PRESETS_DIR, `${name}.json`);
+  if (!fs.existsSync(file)) return { ok: false, error: `Unknown preset "${name}"` };
+  let preset;
+  try {
+    preset = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    return { ok: false, error: `Could not read preset: ${e.message}` };
+  }
+  preset.exit = preset.exit || {};
+  const before = { ...preset.exit };
+  const applied = {};
+  if (Number.isFinite(exit.stopLossPct)) {
+    preset.exit.stopLossPct = exit.stopLossPct;
+    applied.stopLossPct = exit.stopLossPct;
+  }
+  if (Number.isFinite(exit.takeProfitPct)) {
+    preset.exit.takeProfitPct = exit.takeProfitPct;
+    applied.takeProfitPct = exit.takeProfitPct;
+  }
+  if (Number.isFinite(exit.oorWaitMinutes)) {
+    preset.exit.oorWaitMinutes = exit.oorWaitMinutes;
+    applied.oorWaitMinutes = exit.oorWaitMinutes;
+  }
+  if (Object.keys(applied).length === 0) {
+    return { ok: false, error: "No valid exit fields given (stopLossPct/takeProfitPct/oorWaitMinutes)." };
+  }
+  try {
+    fs.writeFileSync(file, JSON.stringify(preset, null, 2));
+  } catch (e) {
+    return { ok: false, error: `Could not save preset: ${e.message}` };
+  }
+  log("league", `Preset ${name} exit updated: ${JSON.stringify(applied)}`);
+  return { ok: true, name, before, after: preset.exit, applied, note: "Only affects NEW positions opened next tournament cycle; existing open positions keep their entry exit rules." };
+}
+
 export function leagueReset() {
   savePositions([]);
   saveHistory([]);

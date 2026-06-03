@@ -41,7 +41,7 @@ import { appendDecision } from "./decision-log.js";
 import { checkAllPositionWhales, pruneSnapshots } from "./whale-tracker.js";
 import { checkMultiTimeframeMomentum, formatMtfResult } from "./multi-timeframe.js";
 import { getSupertrend } from "./supertrend.js";
-import { runTournament, updateTournament, formatLeaderboard, formatLeaguePositions, getPendingPromotion, promoteChampion, setPresetEnabled, leagueReset, getChampion } from "./league.js";
+import { runTournament, updateTournament, formatLeaderboard, formatLeaguePositions, getPendingPromotion, promoteChampion, setPresetEnabled, leagueReset, getChampion, updatePresetExit } from "./league.js";
 import { assessMevRisk, getRecommendedPriorityFee } from "./mev-protection.js";
 import { paperUpdateAll, paperCheckExits, paperFormatStatus, paperFormatPerformance, paperGetPositions } from "./paper-trading.js";
 
@@ -1792,6 +1792,27 @@ async function telegramHandler(msg) {
   const leaguePosCmd = text.match(/^\/(?:leaguepos|league\s+pos)(?:\s+(\S+))?$/i);
   if (leaguePosCmd) {
     await sendMessage(formatLeaguePositions(leaguePosCmd[1] || null)).catch(() => {});
+    return;
+  }
+  // /setexit <preset> <sl> [tp] [oor]  — tighten a preset's exit rules (negative SL)
+  const setExitCmd = text.match(/^\/setexit\s+(\S+)\s+(-?\d+(?:\.\d+)?)(?:\s+(-?\d+(?:\.\d+)?))?(?:\s+(\d+))?$/i);
+  if (setExitCmd) {
+    const [, name, sl, tp, oor] = setExitCmd;
+    const result = updatePresetExit(name, {
+      stopLossPct: Number(sl),
+      takeProfitPct: tp != null ? Number(tp) : undefined,
+      oorWaitMinutes: oor != null ? Number(oor) : undefined,
+    });
+    if (!result.ok) {
+      await sendMessage(`❌ ${result.error}`).catch(() => {});
+    } else {
+      await sendMessage([
+        `✅ Exit preset ${result.name} di-update:`,
+        `SL ${result.after.stopLossPct}% | TP ${result.after.takeProfitPct}% | OOR ${result.after.oorWaitMinutes}m`,
+        ``,
+        `ℹ️ ${result.note}`,
+      ].join("\n")).catch(() => {});
+    }
     return;
   }
   const leagueToggle = text.match(/^\/league\s+(on|off)\s+(\S+)$/i);
