@@ -1915,6 +1915,27 @@ async function telegramHandler(msg) {
     await sendMessage(formatPresetResult(built, study.profile)).catch(() => {});
     return;
   }
+  if (text === "/leaguereset") {
+    await sendMessageWithButtons(
+      "⚠️ Reset turnamen League? Ini hapus semua posisi & history turnamen (skor preset balik 0).\n\nℹ️ AMAN: lessons & Darwin (otak agent) TIDAK kehapus — cuma papan peringkat turnamen.",
+      [[
+        { text: "✅ Ya, reset League", callback_data: "leaguereset:confirm" },
+        { text: "❌ Batal", callback_data: "leaguereset:cancel" },
+      ]]
+    ).catch(() => {});
+    return;
+  }
+  if (msg?.isCallback && text === "leaguereset:confirm") {
+    leagueReset();
+    await answerCallbackQuery(msg.callbackQueryId, "League reset").catch(() => {});
+    await sendMessage("🏆 League turnamen di-reset. Semua preset mulai dari 12 SOL lagi, posisi & history dibersihin. Aturan baru mulai dari nol. 🟢").catch(() => {});
+    return;
+  }
+  if (msg?.isCallback && text === "leaguereset:cancel") {
+    await answerCallbackQuery(msg.callbackQueryId, "Dibatalkan").catch(() => {});
+    await sendMessage("❌ Reset League dibatalkan.").catch(() => {});
+    return;
+  }
   if (text === "/papercloseall") {
     const { paperCloseAll } = await import("./paper-trading.js");
     const result = await paperCloseAll({ reason: "Telegram /papercloseall" });

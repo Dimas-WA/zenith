@@ -461,6 +461,7 @@ const BOT_COMMANDS = [
   { command: "studywallet", description: "Study a top wallet's playstyle: /studywallet <addr>" },
   { command: "makepreset",  description: "Make a League preset from a wallet: /makepreset <addr>" },
   { command: "paperreset", description: "Clear all paper trading data" },
+  { command: "leaguereset", description: "Reset the preset tournament (keeps lessons/Darwin)" },
   { command: "deploy",     description: "Deploy candidate by cached index" },
   { command: "briefing",   description: "Morning briefing" },
   { command: "hive",       description: "HiveMind sync status" },
