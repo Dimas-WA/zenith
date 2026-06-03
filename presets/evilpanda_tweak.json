@@ -3,10 +3,10 @@
   "label": "EvilPanda (wide range, patient)",
   "enabled": true,
   "screening": {
-    "minMcap": 250000,
+    "minMcap": 3000000,
     "maxMcap": 100000000,
-    "minTvl": 10000,
-    "minVolume": 5000,
+    "minTvl": 50000,
+    "minVolume": 150000,
     "minOrganic": 55,
     "minHolders": 500,
     "maxTop10Pct": 30,

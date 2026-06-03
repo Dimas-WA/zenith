@@ -3,10 +3,10 @@
   "label": "Zenith (data-tuned 4h)",
   "enabled": true,
   "screening": {
-    "minMcap": 100000,
+    "minMcap": 3000000,
     "maxMcap": 100000000,
-    "minTvl": 8000,
-    "minVolume": 500,
+    "minTvl": 50000,
+    "minVolume": 150000,
     "minOrganic": 50,
     "minHolders": 300,
     "maxTop10Pct": 60,

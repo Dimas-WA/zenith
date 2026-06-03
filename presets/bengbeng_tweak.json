@@ -3,10 +3,10 @@
   "label": "bengbeng Fast Bid-Ask (tweaked)",
   "enabled": true,
   "screening": {
-    "minMcap": 250000,
+    "minMcap": 3000000,
     "maxMcap": 100000000,
-    "minTvl": 15000,
-    "minVolume": 8000,
+    "minTvl": 50000,
+    "minVolume": 150000,
     "minOrganic": 60,
     "minHolders": 500,
     "maxTop10Pct": 45,
