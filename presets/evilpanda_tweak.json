@@ -1,12 +1,12 @@
 {
   "name": "evilpanda_tweak",
-  "label": "EvilPanda (wide range, patient)",
+  "label": "Evil Panda (SOL-only deep bid-ask, enter-dump)",
   "enabled": true,
   "screening": {
-    "minMcap": 3000000,
+    "minMcap": 2000000,
     "maxMcap": 100000000,
-    "minTvl": 50000,
-    "minVolume": 150000,
+    "minTvl": 20000,
+    "minVolume": 20000,
     "minOrganic": 55,
     "minHolders": 500,
     "maxTop10Pct": 30,
@@ -14,9 +14,9 @@
     "minFeeActiveTvlRatio": 0.1,
     "maxVolatility": 5.0,
     "maxTokenAgeHours": 48,
-    "requireBullishSupertrend": true,
+    "requireBullishSupertrend": false,
     "requireMomentumNotBearish": false,
-    "minTokenAgeHours": 0.5
+    "minTokenAgeHours": 6
   },
   "deploy": {
     "mode": "single",

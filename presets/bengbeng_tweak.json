@@ -3,10 +3,10 @@
   "label": "bengbeng Fast Bid-Ask (tweaked)",
   "enabled": true,
   "screening": {
-    "minMcap": 3000000,
+    "minMcap": 2000000,
     "maxMcap": 100000000,
-    "minTvl": 50000,
-    "minVolume": 150000,
+    "minTvl": 20000,
+    "minVolume": 20000,
     "minOrganic": 60,
     "minHolders": 500,
     "maxTop10Pct": 45,
@@ -16,7 +16,7 @@
     "maxTokenAgeHours": 48,
     "requireBullishSupertrend": true,
     "requireMomentumNotBearish": true,
-    "minTokenAgeHours": 0.5
+    "minTokenAgeHours": 6
   },
   "deploy": {
     "mode": "dual",
