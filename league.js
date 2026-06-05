@@ -482,6 +482,7 @@ export function presetToConfigChanges(presetName) {
     "minMcap", "maxMcap", "minTvl", "minVolume", "minOrganic", "minHolders",
     "maxTop10Pct", "maxBotHoldersPct", "minFeeActiveTvlRatio", "maxVolatility",
     "minTokenAgeHours", "maxTokenAgeHours",
+    "requireBullishSupertrend", "requireMomentumNotBearish",
   ]) {
     if (s[key] !== undefined) changes[key] = s[key];
   }
