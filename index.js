@@ -1689,6 +1689,7 @@ async function applyChampionToConfig(presetName, reason) {
       `⚙️ Live config disamakan ke champion "${presetName}":`,
       `SL ${c.management.stopLossPct}% | TP ${c.management.takeProfitPct}% | OOR ${c.management.outOfRangeWaitMinutes}m`,
       `binsBelow ${c.strategy.defaultBinsBelow} | maxPositions ${c.risk.maxPositions} | sizePct ${c.management.positionSizePct}`,
+      `requireBullish ${c.screening.requireBullishSupertrend} | minMcap ${(c.screening.minMcap/1e6).toFixed(1)}M | minVol ${c.screening.minVolume}`,
     ].join("\n");
   } catch (e) {
     log("league", `applyChampionToConfig error: ${e.message}`);
