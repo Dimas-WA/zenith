@@ -83,6 +83,12 @@ export function deterministicDeployArgs(candidate, baseAmountSol) {
     bins_above: dual ? binsBelow : 0,
     volatility: candidate.volatility,
     risk_score: candidate.risk_score,
+    // Required for paper fee simulation (paperDeploy → fee_tvl_ratio_at_entry).
+    // Without it, paper positions accrue $0 fees even while in range.
+    fee_tvl_ratio: candidate.fee_tvl ?? candidate.fee_tvl_ratio ?? null,
+    organic_score: candidate.organic ?? candidate.organic_score ?? null,
+    bin_step: candidate.bin_step ?? null,
+    active_bin: candidate.active_bin ?? null,
   };
 }
 
