@@ -466,12 +466,11 @@ export function presetToConfigChanges(presetName) {
   set("outOfRangeWaitMinutes", ex.oorWaitMinutes);
 
   const d = p.deploy || {};
+  // Sync STRATEGY only (range shape + mode). Position SIZING (deployAmountSol,
+  // maxDeployAmount, maxPositions, positionSizePct, minSolToOpen) is the user's REAL
+  // capital allocation and stays user-controlled — preset deploy values are League paper
+  // budgets, never appropriate for live. (Was clobbering manual /setcfg sizing.)
   set("deployMode", d.mode);
-  set("maxPositions", d.maxPositions);
-  set("positionSizePct", d.positionSizePct);
-  set("deployAmountSol", d.deployAmountSol);
-  set("maxDeployAmount", d.maxDeployAmount);
-  set("minSolToOpen", d.minSolToOpen);
   if (d.binsBelow !== undefined) {
     changes.binsBelow = d.binsBelow;        // update_config clamps to >= 35 safety floor
     changes.defaultBinsBelow = d.binsBelow;
