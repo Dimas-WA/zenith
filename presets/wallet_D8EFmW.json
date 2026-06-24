@@ -1,0 +1,40 @@
+{
+  "name": "wallet_D8EFmW",
+  "label": "Learned: D8EFmW (balanced-swing)",
+  "enabled": true,
+  "source": "wallet_study",
+  "learned_from": "D8EFmW7TbER1E3f9Yd7jYdLjKQg3P8A9vpjXxjH5XmXL",
+  "learned_at": "2026-06-03T04:17:07.518Z",
+  "screening": {
+    "minMcap": 2000000,
+    "maxMcap": 100000000,
+    "minTvl": 20000,
+    "minVolume": 20000,
+    "minOrganic": 50,
+    "minHolders": 300,
+    "maxTop10Pct": 60,
+    "maxBotHoldersPct": 30,
+    "minFeeActiveTvlRatio": 0.1,
+    "maxVolatility": 4,
+    "minTokenAgeHours": 6,
+    "maxTokenAgeHours": null,
+    "requireBullishSupertrend": false,
+    "requireMomentumNotBearish": true
+  },
+  "deploy": {
+    "mode": "single",
+    "binsBelow": 56,
+    "binsAbove": 0,
+    "budgetSol": 12,
+    "deployAmountSol": 0.5,
+    "maxDeployAmount": 2,
+    "positionSizePct": 0.3,
+    "maxPositions": 4,
+    "minSolToOpen": 0.55
+  },
+  "exit": {
+    "stopLossPct": -20,
+    "takeProfitPct": 4,
+    "oorWaitMinutes": 10
+  }
+}

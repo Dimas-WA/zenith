@@ -1,0 +1,40 @@
+{
+  "name": "wallet_AuDS1j",
+  "label": "Learned: AuDS1j (wide-passive)",
+  "enabled": true,
+  "source": "wallet_study",
+  "learned_from": "AuDS1jWvD2StHgkFfFUYaxa4rKQCjAqGayNSC1feixrV",
+  "learned_at": "2026-06-02T09:10:45.247Z",
+  "screening": {
+    "minMcap": 2000000,
+    "maxMcap": 100000000,
+    "minTvl": 20000,
+    "minVolume": 20000,
+    "minOrganic": 50,
+    "minHolders": 300,
+    "maxTop10Pct": 60,
+    "maxBotHoldersPct": 30,
+    "minFeeActiveTvlRatio": 0.1,
+    "maxVolatility": 4,
+    "maxTokenAgeHours": null,
+    "requireBullishSupertrend": false,
+    "requireMomentumNotBearish": true,
+    "minTokenAgeHours": 6
+  },
+  "deploy": {
+    "mode": "dual",
+    "binsBelow": 71,
+    "binsAbove": 71,
+    "budgetSol": 12,
+    "deployAmountSol": 0.5,
+    "maxDeployAmount": 2,
+    "positionSizePct": 0.3,
+    "maxPositions": 4,
+    "minSolToOpen": 0.55
+  },
+  "exit": {
+    "stopLossPct": -20,
+    "takeProfitPct": 6,
+    "oorWaitMinutes": 60
+  }
+}
