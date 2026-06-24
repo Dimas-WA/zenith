@@ -532,11 +532,12 @@ export async function runScreeningCycle({ silent = false } = {}) {
       try { paperCount = paperGetPositions().total_positions; } catch { /* ignore */ }
     }
     const effectivePositions = prePositions.total_positions + paperCount;
-    if (effectivePositions >= config.risk.maxPositions) {
-      log("cron", `Screening skipped — max positions reached (${effectivePositions}/${config.risk.maxPositions}${paperCount > 0 ? `, ${paperCount} paper` : ""})`);
-      screenReport = null; // silent — no Telegram spam when full
-      _screeningBusy = false;
-      return screenReport;
+    // Champion at capacity → skip the champion DEPLOY only. Still run the candidate scan so
+    // the League tournament + market-regime tracking (both independent of champion capacity)
+    // keep working. (Previously returned here, starving regime/league when positions were full.)
+    const championAtCapacity = effectivePositions >= config.risk.maxPositions;
+    if (championAtCapacity) {
+      log("cron", `Champion at max positions (${effectivePositions}/${config.risk.maxPositions}${paperCount > 0 ? `, ${paperCount} paper` : ""}) — scan for regime/league only, no new champion deploy`);
     }
     const minRequired = config.management.deployAmountSol + config.management.gasReserve;
     const isDryRun = process.env.DRY_RUN === "true";
@@ -843,7 +844,10 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
     let deployAttempted = false;
     let deploySucceeded = false;
-    if (isDeterministicChampion()) {
+    if (championAtCapacity) {
+      // Scanned for regime + League only — champion is full, no new deploy.
+      screenReport = null;
+    } else if (isDeterministicChampion()) {
       // Deploy by rules — no LLM. Paper mirrors live (only DRY_RUN differs).
       screenReport = await runDeterministicScreenDeploy(snapshots, baseDeployAmount, prePositions);
     } else {
