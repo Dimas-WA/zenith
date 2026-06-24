@@ -29,6 +29,7 @@ import { studyWallet, analyzeWalletJson } from "./tools/wallet-study.js";
 import { makePresetFromProfile } from "./tools/wallet-to-preset.js";
 import { studyTopLPers } from "./tools/study.js";
 import { isDeterministicChampion, pickDeterministicCandidate, deterministicDeployArgs, planDeterministicExits } from "./deterministic-champion.js";
+import { trackMarketRegime, getLatestRegime } from "./market-regime.js";
 import { generateBriefing } from "./briefing.js";
 import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, queuePeakConfirmation, resolvePendingPeak, queueTrailingDropConfirmation, resolvePendingTrailingDrop } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
@@ -824,6 +825,9 @@ export async function runScreeningCycle({ silent = false } = {}) {
         supertrend_bullish: st?.bullish === true,
       };
     });
+
+    // ─── Market regime: deterministic, LOG-ONLY (measure before switching) ──
+    try { trackMarketRegime(snapshots); } catch (e) { log("regime_warn", `regime track failed: ${e.message}`); }
 
     // ─── Preset League: run paper tournament (dry run only, deterministic, no LLM cost) ──
     if (process.env.DRY_RUN === "true") {
@@ -1887,6 +1891,22 @@ async function telegramHandler(msg) {
   }
   if (text === "/league") {
     await sendMessage(formatLeaderboard()).catch(() => {});
+    return;
+  }
+  if (text === "/regime") {
+    const r = getLatestRegime();
+    if (!r) {
+      await sendMessage("📡 Belum ada data regime — tunggu screening cycle berikutnya.").catch(() => {});
+    } else {
+      const emoji = r.regime === "downtrend" ? "📉" : r.regime === "uptrend" ? "📈" : "🔀";
+      await sendMessage([
+        `${emoji} MARKET REGIME: ${r.regime.toUpperCase()}`,
+        `bearish ${Math.round((r.bearish_pct ?? 0) * 100)}% | bullish ${Math.round((r.bullish_pct ?? 0) * 100)}% | vol ${r.avg_volatility ?? "?"}`,
+        `(dari ${r.sample_size} kandidat | ${r.at?.slice(0, 16).replace("T", " ")})`,
+        ``,
+        `ℹ️ Log-only — belum nyetir keputusan. Ngumpulin data buat validasi ide regime-switch.`,
+      ].join("\n")).catch(() => {});
+    }
     return;
   }
   const leaguePosCmd = text.match(/^\/(?:leaguepos|league\s+pos)(?:\s+(\S+))?$/i);

@@ -297,6 +297,18 @@ Pure functions are unit-testable: `pickDeterministicCandidate`, `computeBinsBelo
 Bonus: per the league data, deterministic presets (`default` +$4.35) outperformed the LLM champion
 (−$92), and the LLM hot-loop is the main API-cost driver even in DRY_RUN. This flag cuts both.
 
+## Market Regime (market-regime.js) — LOG-ONLY
+
+Deterministic regime label computed each screening cycle from the candidate snapshots
+(`% mtf_bearish`, `% supertrend_bullish`, avg volatility) → `downtrend` / `uptrend` / `choppy`.
+Appended (timestamped) to `market-regime.json` (gitignored). View via `/regime`.
+
+**Measurement only — makes NO trading decision.** The goal is to later join each closed
+position's `deployed_at` to the nearest regime entry and test whether regime predicts which
+preset wins (presets are regime-inverse: dump_catcher wins choppy/bouncy, loses sustained
+downtrend). Building a regime SWITCHER before the data justifies it is the overfitting trap —
+measure first (see [[zenith-1month-data-findings]]).
+
 ## Darwin Signal Weights (signal-weights.js)
 
 `recalculateWeights()` boosts/decays screening signal weights by predictive lift (winners vs losers).
