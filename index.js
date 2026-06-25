@@ -524,6 +524,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
   let prePositions, preBalance;
   let liveMessage = null;
   let screenReport = null;
+  let championAtCapacity = false; // function-scoped: set in pre-check, read at deploy gate
   try {
     [prePositions, preBalance] = await Promise.all([getMyPositions({ force: true }), getWalletBalances()]);
     // In dry run, count paper positions toward the limit
@@ -535,7 +536,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
     // Champion at capacity → skip the champion DEPLOY only. Still run the candidate scan so
     // the League tournament + market-regime tracking (both independent of champion capacity)
     // keep working. (Previously returned here, starving regime/league when positions were full.)
-    const championAtCapacity = effectivePositions >= config.risk.maxPositions;
+    championAtCapacity = effectivePositions >= config.risk.maxPositions;
     if (championAtCapacity) {
       log("cron", `Champion at max positions (${effectivePositions}/${config.risk.maxPositions}${paperCount > 0 ? `, ${paperCount} paper` : ""}) — scan for regime/league only, no new champion deploy`);
     }
