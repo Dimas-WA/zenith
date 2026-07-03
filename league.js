@@ -352,14 +352,23 @@ export function getLeaderboard() {
 export function formatLeaderboard() {
   const lb = getLeaderboard();
   const lines = [`🏆 PRESET LEAGUE — champion: ${lb.champion}`, `(modal terpisah ${lb.rows[0]?.budget_sol ?? 12} SOL/preset | min ${lb.minTradesToJudge} trade)`, ""];
+  const hidden = [];
   for (const r of lb.rows) {
-    const crown = r.is_champion ? "👑" : (r.enabled ? "  " : "🚫");
+    if (!r.enabled && !r.is_champion) {
+      hidden.push(r.open > 0 ? `${r.preset} (${r.open} open)` : r.preset);
+      continue;
+    }
+    const crown = r.is_champion ? "👑" : "  ";
     if (r.closed > 0) {
       lines.push(`${crown} ${r.preset}`);
       lines.push(`     ROI ${r.roi_pct >= 0 ? "+" : ""}${r.roi_pct}% | bal ${r.balance_sol} SOL | ${r.win_rate}% WR (${r.wins}/${r.closed}) | open ${r.open} | fees $${r.total_fees_usd}`);
     } else {
       lines.push(`${crown} ${r.preset} — belum ada trade | open ${r.open} | bal ${r.balance_sol} SOL`);
     }
+  }
+  if (hidden.length > 0) {
+    lines.push("");
+    lines.push(`🚫 off: ${hidden.join(", ")}`);
   }
   return lines.join("\n");
 }
