@@ -1,7 +1,8 @@
 {
   "name": "wallet_2eufL4",
   "label": "Learned: 2eufL4 (balanced-swing)",
-  "enabled": true,
+  "enabled": false,
+  "disabled_reason": "2026-07-03: fresh data (Jun 24-Jul 2) = -$52.74 in 3 trades, 2 of 4 catastrophic losses. SL -35/OOR 90 whale-copy exits ride losers to -19..-27%. All-time +$44 came from old-regime conditions only.",
   "source": "wallet_study",
   "learned_from": "2eufL4JSHCwMRUnwkvBnhWyQ41RZxw3WfcpnQGznQPZM",
   "learned_at": "2026-06-03T03:10:00.880Z",
